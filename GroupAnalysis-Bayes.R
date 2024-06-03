@@ -16,15 +16,15 @@ library(patchwork)
 library(viridis)
 library(formatR)
 
-setwd("~/Documents/Scripts/JolleTrack/")
+setwd("~/Documents/Scripts/GroupMollyTracking/")
 
-indv <- read.csv("JolleTracksAll_.csv")
+indv <- read.csv("JolleTracksAll_2.csv")
 indv$ExpDay <- as.integer(indv$ExpDay)
 
 indv$week <- indv$ExpDay %/% 7 ## Is this integer division
 indv$triday <- indv$ExpDay %/% 3
 
-hourly <- read.csv("JolleTracksHourly_.csv")
+hourly <- read.csv("JolleTracksHourly_2.csv")
 hourly$Hour <- as.integer(hourly$Hour)
 hourly$ExpDay <- as.integer(hourly$ExpDay)
 
@@ -1686,6 +1686,7 @@ func.weekly.intercepts <- function(col_name,data) {
   
   plot.week <- ggplot(pred.intercepts, aes(x=date, y=blup, group=picomp, color=picomp)) + 
     geom_line() + 
+    ggtitle(depVar) +
     theme_classic() + 
     theme(legend.position = "none",
           rect=element_rect(fill="transparent"),
@@ -1693,15 +1694,18 @@ func.weekly.intercepts <- function(col_name,data) {
           axis.line = element_line(linewidth = 0.5, colour = "black"),
           axis.ticks = element_line(colour = "black"),
           axis.text = element_text(size = 12, colour = "black"),
-          axis.title = element_text(size = 14, face = "bold", colour = "black"),
-          plot.title = element_text(hjust = 0.5, size = 0)) 
+          axis.title = element_text(size = 14, face = "bold", colour = "black",text(depVar)),
+          plot.title = element_text(hjust = 0.5, size = 14)) 
   return(plot.week)
 }
 
-#testplot.week <- func.weekly.intercept("dist_mean",indv.com)
+#testplot.week <- func.weekly.intercepts("dist_mean",indv.com)
 testplot.week <- func.weekly.intercepts("dist_mean",indv.long)
 testplot.week
 
+
+
+testplot.week
 func.hourly.repeat <- function(depVar,data) { 
   
   fixed <- as.formula(paste(depVar," ~ Hour",sep=""))
@@ -1820,30 +1824,32 @@ func.weekly.predict <- function(depVar,data) {
 names(indv.com)
 
 #'dist_mean',
-for (depVar in c('angleC_mean','head_mean','pDistC_mean','velC_mean','vel_mean','pDist_mean')) {
+for (depVar in c('dist_mean','polarity_mean','angleC_mean','rotation_mean','angMC_mean','pDistC_mean','velC_mean','vel_mean','pDist_mean')) {
+#for (depVar in c('angMC_mean','pDistC_mean','velC_mean','vel_mean','pDist_mean')) {
 #for (depVar in c('dist_mean','vel_mean','pDist_mean')) {
 #for (depVar in c('pDist_mean')) {
   print(depVar)
   hourly_dep <- paste(depVar,'_',sep="")
   print("DIC")
-  #func.DIC(depVar,'ExpDay',indv.com)
-  
+  func.DIC(depVar,'ExpDay',indv.com)
+
   print("Day1 Rpt")
-  #func.hourly.repeat(hourly_dep,day1.com)
+  func.hourly.repeat(hourly_dep,day1.com)
   
   print("Day27 Rpt")
-  #func.hourly.repeat(hourly_dep,day27.com)
+  func.hourly.repeat(hourly_dep,day27.com)
   
   print("Week:Week predictability")
-  #func.weekly.predict(depVar,indv.com)
+  func.weekly.predict(depVar,indv.com)
   
   print("Overall rpt")
-  #func.overall.repeat(depVar,indv.com)
+  func.overall.repeat(depVar,indv.com)
   
   print("Intercepts:")
-  #plot.weekly <- func.weekly.intercepts(depVar,indv.long)
+  plot.weekly <- func.weekly.intercepts(depVar,indv.long)
   plot.daily <- func.triday.intercepts(depVar,indv.com)
-  #print(plot.weekly)
+  print(plot.weekly)
+  print(plot.daily)
 }
 plot.weekly
 func.DIC(depVar,'ExpDay',indv.com)

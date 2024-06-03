@@ -55,13 +55,17 @@ def get_tracks(in_file):
     for f in range(n_fish):
         f_df = track_df[track_df.id == fishIDs[f]]
         
-        xy_f = np.array(f_df[['x','y']])
+        xy_f = np.array(f_df[['x','y']]).astype(float)
+        xy_f[xy_f == -1] = np.nan
+
         indices = np.array(f_df.frame)
         track_array[indices,f] = xy_f
+
+        
         track_polar[indices,f] = xy_to_polar(xy_f)
 
 
-    track_array[track_array == -1] = np.nan
+    #track_array[track_array == -1] = np.nan
     return track_array,track_polar,[n_frames,n_fish,fishIDs]
 
 def bin_tracks(track_array,bin_size=3600):
@@ -115,21 +119,46 @@ def get_stats(track_array,track_polar):
     stat_array = np.zeros([n_stats,n_fish,n_fish])
 
     velocity_array = np.full([n_frames,n_fish],np.nan)
-    heading_array = np.array(velocity_array)
+    angMom_array = np.array(velocity_array)
     distance_array = np.full([n_frames,n_fish,n_fish],np.nan)
 
     MAX_VEL = 200
-    MAX_THETA =  np.pi/8
+    MAX_THETA =  np.pi/4
 
 ## I might be able to speed these up:
     for n in range(n_fish):
         velocity_array[1:,n] = get_distance(track_array[:,n])
-        heading_array[1:,n] = np.diff(track_polar[:,n,1])
-    diff_array = np.diff(track_polar,axis=0)
-    angle_array = np.arctan2(diff_array[:,:,0],diff_array[:,:,1])/np.pi*180
-    
+        angMom_array[1:,n] = np.diff(track_polar[:,n,1])
+## Clean up tracking errors
     velocity_array[velocity_array > MAX_VEL] = np.nan
-    heading_array[np.abs(heading_array) > MAX_THETA] = np.nan
+    velocity_array[velocity_array == 0] = np.nan
+
+    angMom_array[np.abs(angMom_array) > MAX_THETA] = np.nan
+    angMom_array[angMom_array == 0] = np.nan
+
+    diff_array = np.diff(track_array,axis=0,prepend=np.nan)
+    diff_array[np.isnan(velocity_array)] = np.nan
+    #diff_array[velocity_array > MAX_VEL] = np.nan
+
+    angle_array = np.arctan2(diff_array[:,:,0],diff_array[:,:,1])/np.pi*180
+
+    #angle_array[angle_array == 0] = np.nan ##solves arctan(0,0)
+    angMom_array_N = np.array(angMom_array) / (2*np.pi)
+    angle_array_N = angle_array / 180
+    angle_medians = np.nanmedian(angle_array_N,axis=1)
+    angMom_medians = np.nanmedian(angMom_array_N,axis=1)
+    for n in range(n_fish):
+        angMom_array_N[:,n] = 1 - np.abs(angMom_array[:,n] - angMom_medians)
+        angle_array_N[:,n] = 1 - np.abs(angle_array_N[:,n] - angle_medians)
+
+        angle_array_N[:,n][np.isnan(velocity_array[:,n])] = np.nan
+        angMom_array_N[:,n][np.isnan(angMom_array[:,n])] = np.nan
+    
+    polarity_array = np.nanmean(angle_array_N,axis=1)
+    polarity_array[polarity_array == 1] = np.nan
+
+    rotation_array = np.nanmean(angMom_array_N,axis=1)
+    rotation_array[rotation_array == 1] = np.nan
 
     all_good_indices = np.zeros(n_frames)
     for i,j in itertools.combinations(np.arange(n_fish),2):
@@ -137,9 +166,12 @@ def get_stats(track_array,track_polar):
         xs = track_polar[:,i,0]
         ys = track_polar[:,j,0]
         good_indices = (~np.isnan(xs)) & (~np.isnan(ys))
-        xs = xs[good_indices]
-        ys = ys[good_indices]
-        r_stat,p = pearsonr(xs,ys)
+        if sum(good_indices) > 10:
+            xs = xs[good_indices]
+            ys = ys[good_indices]
+            r_stat,p = pearsonr(xs,ys)
+        else:
+            r_stat = np.nan
         #print(i,j,r_stat,p)
         stat_array[0,i,j] = r_stat
 
@@ -147,7 +179,6 @@ def get_stats(track_array,track_polar):
         track_i = track_array[:,i]
         track_j = track_array[:,j]
         good_indices = (~np.isnan(track_i[:,0])) & (~np.isnan(track_j[:,0]))
-        #import pdb;pdb.set_trace()
         distance_array[good_indices,i,j] = np.linalg.norm(track_i[good_indices] - track_j[good_indices],axis=1)
         distance_array[good_indices,j,i] = distance_array[good_indices,i,j]
         all_good_indices[good_indices] = True
@@ -167,8 +198,8 @@ def get_stats(track_array,track_polar):
         good_indices = (~np.isnan(vel_i)) & (~np.isnan(vel_j))
         if sum(good_indices) > 100:
             r_stat,p = pearsonr(vel_i[good_indices],vel_j[good_indices])
-            good_indices1 = good_indices[1:]
-            r_stat2,p2 = pearsonr(angle_array[good_indices1,i],angle_array[good_indices1,j])
+            #good_indices1 = good_indices[1:]
+            r_stat2,p2 = pearsonr(angle_array[good_indices,i],angle_array[good_indices,j])
         else:
             r_stat,p = np.nan,np.nan
             r_stat2,p2 = np.nan,np.nan
@@ -179,11 +210,14 @@ def get_stats(track_array,track_polar):
         #head_j = np.diff(track_polar[:,j,1])
         #head_i[np.abs(head_i) > np.pi/8] = np.nan
         #head_j[np.abs(head_j) > np.pi/8] = np.nan
-        head_i = heading_array[:,i]
-        head_j = heading_array[:,j]
+        head_i = angMom_array[:,i]
+        head_j = angMom_array[:,j]
 
         good_indices = ~np.isnan(head_i) & ~np.isnan(head_j)
-        r_stat,p = pearsonr(head_i[good_indices],head_j[good_indices])
+        if sum(good_indices) > 10:
+            r_stat,p = pearsonr(head_i[good_indices],head_j[good_indices])
+        else:
+            r_stat = np.nan
         stat_array[3,i,j] = r_stat
     if False:
         print('dist from center:')
@@ -192,7 +226,7 @@ def get_stats(track_array,track_polar):
         print(stat_array[1]) ## This is mean distance
         print('velocity r')
         print(stat_array[2]) ## Velocity cohesion 
-        print('heading r')
+        print('Angular Mom. r')
         print(stat_array[3]) ## Heading Cohesion
         print('Angle r')
         print(stat_array[4]) ## Angle Cohesion
@@ -201,14 +235,12 @@ def get_stats(track_array,track_polar):
 ## Mean distance (and std) STD is across fish
 
 
-    #import pdb;pdb.set_trace()
     #distance_array = distance_array[all_good_indices == True] ## NOTE: this is bad, do I need it?
     dist_mean = np.nanmean(distance_array) ## This is just mean distance
     dist_std = np.nanmean(np.nanstd(distance_array,axis=(1,2)))
 
     nn_dist = np.nanmin(distance_array,axis=1) ## Mean nearest neighbord distance
     nn_mean = np.nanmean(nn_dist)
-    #import pdb;pdb.set_trace()
     nn_std = np.nanstd(nn_dist)
 
     pDist_mean = np.nanmean(track_polar[:,:,0])
@@ -218,16 +250,21 @@ def get_stats(track_array,track_polar):
 
     vel_mean = np.nanmean(velocity_array)
     vel_std = np.nanstd(np.nanstd(velocity_array,axis=1))
-    head_mean = np.nanmean(stat_array[3]) ## this is the mean cohesion
-    head_std = np.nanstd(stat_array[3])
+    angMomC_mean = np.nanmean(stat_array[3]) ## this is the mean cohesion
+    angMomC_std = np.nanstd(stat_array[3])
     velC_mean = np.nanmean(stat_array[2])
     velC_std = np.nanstd(stat_array[2])
 
     angleC_mean = np.nanmean(stat_array[4])
     angleC_std = np.nanstd(stat_array[4])
 
-    stat_arrays = [velocity_array,heading_array,distance_array]
-    #import pdb;pdb.set_trace()
+    polarity_mean = np.nanmean(polarity_array)
+    polarity_std = np.nanstd(polarity_array)
+
+    rotation_mean = np.nanmean(rotation_array)
+    rotation_std = np.nanstd(rotation_array)
+
+    stat_arrays = [velocity_array,angMom_array,distance_array]
     track_stats = {
         'dist_mean':dist_mean,
         'dist_std':dist_std,
@@ -235,8 +272,12 @@ def get_stats(track_array,track_polar):
         'vel_std':vel_std,
         'velC_mean':velC_mean,
         'velC_std':velC_std,
-        'head_mean':head_mean,
-        'head_std':head_std,
+        'angMC_mean':angMomC_mean,
+        'angMC_std':angMomC_std,
+        'polarity_mean':polarity_mean,
+        'polarity_std':polarity_std,
+        'rotation_mean':rotation_mean,
+        'rotation_std':rotation_std,
         'pDist_mean':pDist_mean,
         'pDist_std':pDist_std,
         'pDistC_mean':pDistC_mean,
@@ -392,8 +433,9 @@ if __name__ == '__main__':
     new_cols_.extend(long_cols[:-3])
     long_df = long_df[new_cols_]
 
-    csv_df.to_csv('./JolleTracksAll_.csv',index=False)
-    long_df.to_csv('./JolleTracksHourly_.csv',index=False)
+    if True:
+        csv_df.to_csv('./JolleTracksAll_2.csv',index=False)
+        long_df.to_csv('./JolleTracksHourly_2.csv',index=False)
 
     if False:
         fig,(ax,ax2,ax3) = plt.subplots(1,3)
