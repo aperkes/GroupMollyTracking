@@ -1927,8 +1927,14 @@ for (depVar in c('dist_mean','polarity_mean','angleC_mean','rotation_mean','angM
   plots.daily <- func.triday.intercepts(depVar,indv.com)
   print(plots.daily[1])
   print(plots.daily[2])
-  break
+
+  ggsave(paste("./figs/plot",depVar,'WeeklyBLUP.jpg',sep='.'),plots.weekly[[1]])
+  ggsave(paste("./figs/plot",depVar,'WeeklyRPT.jpg',sep='.'),plots.weekly[[2]])
+  ggsave(paste("./figs/plot",depVar,'DailyBLUP.jpg',sep='.'),plots.daily[[1]])
+  ggsave(paste("./figs/plot",depVar,'DailyRPT.jpg',sep='.'),plots.daily[[2]])
 }
+
+
 
 plot.weekly
 func.DIC(depVar,'ExpDay',indv.com)
