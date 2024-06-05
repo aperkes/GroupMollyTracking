@@ -116,7 +116,7 @@ pc
 
 lm.test <- lme(pDistC_mean_ ~ Hour, random = ~1|Pi, data = day1.com)
 
-par(mfrow=c(2,2))
+#par(mfrow=c(2,2))
 plot(lm.test)
 hist(resid(lm.test))
 qqnorm(resid(lm.test))
@@ -1058,9 +1058,9 @@ func.DIC("dist_mean_","Hour",day27.com)
 func.DIC("dist_mean","ExpDay",indv.com)
 
 ## Define function that calculates the intercepts on day0
-func.hourly.intercepts <- function(col_name,data) {
+func.hourly.intercepts <- function(depVar,data) {
 
-  fixed <- as.formula(paste(col_name,"~ Hour",sep=""))
+  fixed <- as.formula(paste(depVar,"~ Hour",sep=""))
   # Null model -----------
   set.seed(58)
   #col.day1.0 <-  MCMCglmm(fixed=fixed, 
@@ -1143,7 +1143,7 @@ func.hourly.intercepts("dist_mean_",day1.com)
 ## Uses variable ~ day + (1+day|pi)
 
 
-func.triday.intercepts <- function(col_name,data) {
+func.triday.intercepts <- function(depVar,data) {
   # select only those IDs in that vector & only keep up to obs 70 & make obs 1 = 0
   indv.30days.cen <- data %>%
     mutate(Day0 = ExpDay, 
@@ -1160,7 +1160,7 @@ func.triday.intercepts <- function(col_name,data) {
   
   #indv.30days.cen <- indv.30days.cen[indv.30days.cen$Pi != "pi12",]
   set.seed(403)
-  fixed <- as.formula(paste(col_name,"~ Day0",sep=""))
+  fixed <- as.formula(paste(depVar,"~ Day0",sep=""))
   print('doing models')
   print('day0')
   col.day0 <- MCMCglmm(fixed = fixed, 
@@ -1173,7 +1173,7 @@ func.triday.intercepts <- function(col_name,data) {
                         verbose = F)
   
   set.seed(765)
-  fixed <- as.formula(paste(col_name,"~ Day3",sep=""))
+  fixed <- as.formula(paste(depVar,"~ Day3",sep=""))
   col.day3 <- MCMCglmm(fixed = fixed, 
                         random = ~us(1 + Day3):Pi, 
                         data = indv.30days.cen, 
@@ -1183,7 +1183,7 @@ func.triday.intercepts <- function(col_name,data) {
                         nitt=310000, burnin = 10000, thin = 200, 
                         verbose = F)
   
-  fixed <- as.formula(paste(col_name,"~ Day6",sep=""))
+  fixed <- as.formula(paste(depVar,"~ Day6",sep=""))
   col.day6 <- MCMCglmm(fixed = fixed, 
                         random = ~us(1 + Day6):Pi, 
                         data = indv.30days.cen, 
@@ -1194,7 +1194,7 @@ func.triday.intercepts <- function(col_name,data) {
                         verbose = F)
   
   print('day 9')
-  fixed <- as.formula(paste(col_name,"~ Day9",sep=""))
+  fixed <- as.formula(paste(depVar,"~ Day9",sep=""))
   col.day9 <- MCMCglmm(fixed = fixed, 
                         random = ~us(1 + Day9):Pi, 
                         data = indv.30days.cen, 
@@ -1204,7 +1204,7 @@ func.triday.intercepts <- function(col_name,data) {
                         nitt=310000, burnin = 10000, thin = 200, 
                         verbose = F)
   
-  fixed <- as.formula(paste(col_name,"~ Day12",sep=""))
+  fixed <- as.formula(paste(depVar,"~ Day12",sep=""))
   col.day12 <- MCMCglmm(fixed = fixed, 
                          random = ~us(1 + Day12):Pi, 
                          data = indv.30days.cen, 
@@ -1214,7 +1214,7 @@ func.triday.intercepts <- function(col_name,data) {
                          nitt=310000, burnin = 10000, thin = 200, 
                          verbose = F)
   
-  fixed <- as.formula(paste(col_name,"~ Day15",sep=""))
+  fixed <- as.formula(paste(depVar,"~ Day15",sep=""))
   col.day15 <- MCMCglmm(fixed = fixed, 
                          random = ~us(1 + Day15):Pi, 
                          data = indv.30days.cen, 
@@ -1225,7 +1225,7 @@ func.triday.intercepts <- function(col_name,data) {
                          verbose = F)
   
   print('day 18')
-  fixed <- as.formula(paste(col_name,"~ Day18",sep=""))
+  fixed <- as.formula(paste(depVar,"~ Day18",sep=""))
   col.day18 <- MCMCglmm(fixed = fixed, 
                          random = ~us(1 + Day18):Pi, 
                          data = indv.30days.cen, 
@@ -1235,7 +1235,7 @@ func.triday.intercepts <- function(col_name,data) {
                          nitt=310000, burnin = 10000, thin = 200, 
                          verbose = F)
   
-  fixed <- as.formula(paste(col_name,"~ Day21",sep=""))
+  fixed <- as.formula(paste(depVar,"~ Day21",sep=""))
   col.day21 <- MCMCglmm(fixed = fixed, 
                          random = ~us(1 + Day21):Pi, 
                          data = indv.30days.cen, 
@@ -1245,7 +1245,7 @@ func.triday.intercepts <- function(col_name,data) {
                          nitt=310000, burnin = 10000, thin = 200, 
                          verbose = F)
   
-  fixed <- as.formula(paste(col_name,"~ Day24",sep=""))
+  fixed <- as.formula(paste(depVar,"~ Day24",sep=""))
   col.day24 <- MCMCglmm(fixed = fixed, 
                          random = ~us(1 + Day24):Pi, 
                          data = indv.30days.cen, 
@@ -1255,7 +1255,7 @@ func.triday.intercepts <- function(col_name,data) {
                          nitt=310000, burnin = 10000, thin = 200, 
                          verbose = F)
   
-  fixed <- as.formula(paste(col_name,"~ Day27",sep=""))
+  fixed <- as.formula(paste(depVar,"~ Day27",sep=""))
   col.day27 <- MCMCglmm(fixed = fixed, 
                          random = ~us(1 + Day27):Pi, 
                          data = indv.30days.cen, 
@@ -1266,7 +1266,7 @@ func.triday.intercepts <- function(col_name,data) {
                          verbose = F)
   
   print('day 30')
-  fixed <- as.formula(paste(col_name,"~ Day30",sep=""))
+  fixed <- as.formula(paste(depVar,"~ Day30",sep=""))
   col.day30 <- MCMCglmm(fixed = fixed, 
                          random = ~us(1 + Day30):Pi, 
                          data = indv.30days.cen, 
@@ -1276,7 +1276,7 @@ func.triday.intercepts <- function(col_name,data) {
                          nitt=310000, burnin = 10000, thin = 200, 
                          verbose = F)
 
-  #plot(col.day0$VCV,)
+  plot(col.day0$VCV,)
   
   ## Copy pasting so much, getting day: variance
   date <- c(0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30) ## "It's a magic number"
@@ -1434,8 +1434,8 @@ testplot <- func.triday.intercepts("dist_mean",indv.com.no12)
 testplot
 
 ## What if we do the longer pi's? Still decreasing
-col_name <- 'dist_mean'
-func.weekly.intercepts <- function(col_name,data) {
+depVar <- 'dist_mean'
+func.weekly.intercepts <- function(depVar,data) {
 # select only those IDs in that vector & only keep up to obs 70 & make obs 1 = 0
   indv.60days.cen <- data %>%
     mutate(Week0 = ExpDay, 
@@ -1451,7 +1451,7 @@ func.weekly.intercepts <- function(col_name,data) {
   
   #indv.60days.cen <- indv.36days.cen[indv.60days.cen$Pi != "pi12",]
   set.seed(403)
-  fixed <- as.formula(paste(col_name,"~ Week0",sep=""))
+  fixed <- as.formula(paste(depVar,"~ Week0",sep=""))
   print('week0')
   col.week0 <- MCMCglmm(fixed = fixed, 
                        random = ~us(1 + Week0):Pi, 
@@ -1463,7 +1463,7 @@ func.weekly.intercepts <- function(col_name,data) {
                        verbose = F)
   
   set.seed(765)
-  fixed <- as.formula(paste(col_name,"~ Week1",sep=""))
+  fixed <- as.formula(paste(depVar,"~ Week1",sep=""))
   col.week1 <- MCMCglmm(fixed = fixed, 
                        random = ~us(1 + Week1):Pi, 
                        data = indv.60days.cen, 
@@ -1473,7 +1473,7 @@ func.weekly.intercepts <- function(col_name,data) {
                        nitt=310000, burnin = 10000, thin = 200, 
                        verbose = F)
   
-  fixed <- as.formula(paste(col_name,"~ Week2",sep=""))
+  fixed <- as.formula(paste(depVar,"~ Week2",sep=""))
   col.week2 <- MCMCglmm(fixed = fixed, 
                        random = ~us(1 + Week2):Pi, 
                        data = indv.60days.cen, 
@@ -1484,7 +1484,7 @@ func.weekly.intercepts <- function(col_name,data) {
                        verbose = F)
   
   print('week3')
-  fixed <- as.formula(paste(col_name,"~ Week3",sep=""))
+  fixed <- as.formula(paste(depVar,"~ Week3",sep=""))
   col.week3 <- MCMCglmm(fixed = fixed, 
                        random = ~us(1 + Week3):Pi, 
                        data = indv.60days.cen, 
@@ -1494,7 +1494,7 @@ func.weekly.intercepts <- function(col_name,data) {
                        nitt=310000, burnin = 10000, thin = 200, 
                        verbose = F)
   
-  fixed <- as.formula(paste(col_name,"~ Week4",sep=""))
+  fixed <- as.formula(paste(depVar,"~ Week4",sep=""))
   col.week4 <- MCMCglmm(fixed = fixed, 
                         random = ~us(1 + Week4):Pi, 
                         data = indv.60days.cen, 
@@ -1504,7 +1504,7 @@ func.weekly.intercepts <- function(col_name,data) {
                         nitt=310000, burnin = 10000, thin = 200, 
                         verbose = F)
   
-  fixed <- as.formula(paste(col_name,"~ Week5",sep=""))
+  fixed <- as.formula(paste(depVar,"~ Week5",sep=""))
   col.week5 <- MCMCglmm(fixed = fixed, 
                         random = ~us(1 + Week5):Pi, 
                         data = indv.60days.cen, 
@@ -1514,7 +1514,7 @@ func.weekly.intercepts <- function(col_name,data) {
                         nitt=310000, burnin = 10000, thin = 200, 
                         verbose = F)
   
-  fixed <- as.formula(paste(col_name,"~ Week6",sep=""))
+  fixed <- as.formula(paste(depVar,"~ Week6",sep=""))
   col.week6 <- MCMCglmm(fixed = fixed, 
                         random = ~us(1 + Week6):Pi, 
                         data = indv.60days.cen, 
@@ -1524,7 +1524,7 @@ func.weekly.intercepts <- function(col_name,data) {
                         nitt=310000, burnin = 10000, thin = 200, 
                         verbose = F)
   
-  fixed <- as.formula(paste(col_name,"~ Week7",sep=""))
+  fixed <- as.formula(paste(depVar,"~ Week7",sep=""))
   col.week7 <- MCMCglmm(fixed = fixed, 
                         random = ~us(1 + Week7):Pi, 
                         data = indv.60days.cen, 
@@ -1534,7 +1534,7 @@ func.weekly.intercepts <- function(col_name,data) {
                         nitt=310000, burnin = 10000, thin = 200, 
                         verbose = F)
   
-  fixed <- as.formula(paste(col_name,"~ Week8",sep=""))
+  fixed <- as.formula(paste(depVar,"~ Week8",sep=""))
   col.week8 <- MCMCglmm(fixed = fixed, 
                         random = ~us(1 + Week8):Pi, 
                         data = indv.60days.cen, 
@@ -1544,7 +1544,7 @@ func.weekly.intercepts <- function(col_name,data) {
                         nitt=310000, burnin = 10000, thin = 200, 
                         verbose = F)
   
-  fixed <- as.formula(paste(col_name,"~ Week9",sep=""))
+  fixed <- as.formula(paste(depVar,"~ Week9",sep=""))
   col.week9 <- MCMCglmm(fixed = fixed, 
                         random = ~us(1 + Week9):Pi, 
                         data = indv.60days.cen, 
@@ -1556,7 +1556,7 @@ func.weekly.intercepts <- function(col_name,data) {
   
   print('done with models')
   
-  #plot(col.day0$VCV,)
+  #plot(col.week0$VCV,)
   
   ## Copy pasting so much, getting day: variance
   #date <- c(0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30) ## "It's a magic number"
@@ -1643,9 +1643,11 @@ func.weekly.intercepts <- function(col_name,data) {
             HPDinterval(col.week9$VCV[,"units"])[1:2]) 
   
   ci.w <- matrix(ci.w, nrow = 10, byrow = T)            
+  
   #plot(post.id ~ date)
   #plot(post.w ~ date)
-  plot(rpt ~ date)
+  #plot(rpt ~ date)
+  
   
   rpt.slice.wide <- data.frame(date, rpt, "lower.rpt" = ci.rpt[,1], "upper.rpt" = ci.rpt[,2],
                                post.id, "lower.id" = ci.id[,1], "upper.id" = ci.id[,2], 
@@ -1656,7 +1658,6 @@ func.weekly.intercepts <- function(col_name,data) {
                                "variance" = unname(c(rpt, post.id, post.w)),
                                "lower" = unname(c(ci.rpt[,1], ci.id[,1], ci.w[,1])),
                                "upper" = unname(c(ci.rpt[,2], ci.id[,2], ci.w[,2])))
-  
   
   ### This is very dataset specific, you may need to check it: 
   ids <- colnames(col.week0$Sol)[3:10] ## Make sure this matches below
@@ -1684,8 +1685,9 @@ func.weekly.intercepts <- function(col_name,data) {
   
   pred.intercepts <- data.frame(date, picomp, blup)
   
-  plot.week <- ggplot(pred.intercepts, aes(x=date, y=blup, group=picomp, color=picomp)) + 
-    geom_line() + 
+  return(rpt.slice.long)
+  
+  plt.repeat <- ggplot(rpt.slice.long,aes(x=date,y=rpt)) + geom_point() + 
     ggtitle(depVar) +
     theme_classic() + 
     theme(legend.position = "none",
@@ -1696,12 +1698,39 @@ func.weekly.intercepts <- function(col_name,data) {
           axis.text = element_text(size = 12, colour = "black"),
           axis.title = element_text(size = 14, face = "bold", colour = "black",text(depVar)),
           plot.title = element_text(hjust = 0.5, size = 14)) 
-  return(plot.week)
+  
+  plt.week <- ggplot(pred.intercepts, aes(x=date, y=blup, group=picomp, color=picomp)) + 
+    geom_line() + 
+    ggtitle(depVar) +
+    theme_classic() + 
+    theme(legend.position = "none",
+          rect=element_rect(fill="transparent"),
+          panel.background=element_rect(fill="transparent"),
+          axis.line = element_line(linewidth = 0.5, colour = "black"),
+          axis.ticks = element_line(colour = "black"),
+          axis.text = element_text(size = 12, colour = "black"),
+          axis.title = element_text(size = 14, face = "bold", colour = "black"),
+          plot.title = element_text(hjust = 0.5, size = 14)) 
+  return(list(plt.week,plt.repeat))
 }
 
+test.slice.long <- func.weekly.intercepts("dist_mean",indv.com)
+plt.repeat <- ggplot(test.slice.long,aes(x=date,y=rpt)) + geom_point() + 
+  ggtitle("test") +
+  theme_classic() + 
+  theme(legend.position = "none",
+        rect=element_rect(fill="transparent"),
+        panel.background=element_rect(fill="transparent"),
+        axis.line = element_line(linewidth = 0.5, colour = "black"),
+        axis.ticks = element_line(colour = "black"),
+        axis.text = element_text(size = 12, colour = "black"),
+        axis.title = element_text(size = 14, face = "bold", colour = "black"),
+        plot.title = element_text(hjust = 0.5, size = 14)) 
+
 #testplot.week <- func.weekly.intercepts("dist_mean",indv.com)
-testplot.week <- func.weekly.intercepts("dist_mean",indv.long)
+list[testplot.week,testplot.repeat] <- func.weekly.intercepts("dist_mean",indv.long)
 testplot.week
+testplot.repeat
 
 
 
@@ -1847,10 +1876,14 @@ for (depVar in c('dist_mean','polarity_mean','angleC_mean','rotation_mean','angM
   
   print("Intercepts:")
   plot.weekly <- func.weekly.intercepts(depVar,indv.long)
-  plot.daily <- func.triday.intercepts(depVar,indv.com)
   print(plot.weekly)
+  
+  plot.daily <- func.triday.intercepts(depVar,indv.com)
   print(plot.daily)
+  
+  break
 }
+
 plot.weekly
 func.DIC(depVar,'ExpDay',indv.com)
 #"dist_mean",
