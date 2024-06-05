@@ -1276,7 +1276,7 @@ func.triday.intercepts <- function(depVar,data) {
                          nitt=310000, burnin = 10000, thin = 200, 
                          verbose = F)
 
-  plot(col.day0$VCV,)
+  #plot(col.day0$VCV,)
   
   ## Copy pasting so much, getting day: variance
   date <- c(0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30) ## "It's a magic number"
@@ -1370,9 +1370,9 @@ func.triday.intercepts <- function(depVar,data) {
             HPDinterval(col.day30$VCV[,"units"])[1:2])
   
   ci.w <- matrix(ci.w, nrow = 11, byrow = T)            
-  plot(post.id ~ date)
-  plot(post.w ~ date)
-  plot(rpt ~ date)
+  #plot(post.id ~ date)
+  #plot(post.w ~ date)
+  #plot(rpt ~ date)
   
   rpt.slice.wide <- data.frame(date, rpt, "lower.rpt" = ci.rpt[,1], "upper.rpt" = ci.rpt[,2],
                                post.id, "lower.id" = ci.id[,1], "upper.id" = ci.id[,2], 
@@ -1384,6 +1384,8 @@ func.triday.intercepts <- function(depVar,data) {
                                "lower" = unname(c(ci.rpt[,1], ci.id[,1], ci.w[,1])),
                                "upper" = unname(c(ci.rpt[,2], ci.id[,2], ci.w[,2])))
   
+  
+  rpt.slice.rpt <- rpt.slice.long[rpt.slice.long$type == 'rpt',]
   
   ### This is very dataset specific, you may need to check it: 
   ids <- colnames(col.day0$Sol)[3:14] ## Make sure this matches below
@@ -1412,8 +1414,13 @@ func.triday.intercepts <- function(depVar,data) {
   
   pred.intercepts <- data.frame(date, picomp, blup)
   
-  plot.day <- ggplot(pred.intercepts, aes(x=date, y=blup, group=picomp, color=picomp)) + 
-    geom_line() + 
+
+  plt.repeat <- ggplot(rpt.slice.rpt,aes(x=date,y=variance)) + geom_line() +
+    geom_errorbar(aes(ymin=lower,ymax=upper)) + 
+    ggtitle(depVar) +
+    ylim(0,1) + 
+    ylab('Repeatability') + 
+    xlab('Days since birth') + 
     theme_classic() + 
     theme(legend.position = "none",
           rect=element_rect(fill="transparent"),
@@ -1422,12 +1429,34 @@ func.triday.intercepts <- function(depVar,data) {
           axis.ticks = element_line(colour = "black"),
           axis.text = element_text(size = 12, colour = "black"),
           axis.title = element_text(size = 14, face = "bold", colour = "black"),
-          plot.title = element_text(hjust = 0.5, size = 0)) 
-  return(plot.day)
+          plot.title = element_text(hjust = 0.5, size = 14)) 
+  ylims <- c(0,1)
+  if (depVar == 'dist_mean') {
+    ylims <- c(0,500)
+  }
+
+  plt.day <- ggplot(pred.intercepts, aes(x=date, y=blup, group=picomp, color=picomp)) + 
+    geom_line() + 
+    ggtitle(depVar) +
+    theme_classic() + 
+    ylim(ylims) + 
+    ylab(depVar) + 
+    xlab('Days since birth') + 
+    theme(legend.position = "none",
+          rect=element_rect(fill="transparent"),
+          panel.background=element_rect(fill="transparent"),
+          axis.line = element_line(linewidth = 0.5, colour = "black"),
+          axis.ticks = element_line(colour = "black"),
+          axis.text = element_text(size = 12, colour = "black"),
+          axis.title = element_text(size = 14, face = "bold", colour = "black"),
+          plot.title = element_text(hjust = 0.5, size = 14))
+  
+  return(list(plt.day,plt.repeat))
 }
 
-testplot <- func.triday.intercepts("dist_mean",indv.com)
-testplot
+testplots <- func.triday.intercepts("dist_mean",indv.com)
+testplots[1]
+testplots[2]
 indv.com.no12 <- indv.com[indv.com$Pi != 'pi12',]
 testplot <- func.triday.intercepts("dist_mean",indv.com.no12)
 
@@ -1685,10 +1714,13 @@ func.weekly.intercepts <- function(depVar,data) {
   
   pred.intercepts <- data.frame(date, picomp, blup)
   
-  return(rpt.slice.long)
-  
-  plt.repeat <- ggplot(rpt.slice.long,aes(x=date,y=rpt)) + geom_point() + 
+  rpt.slice.rpt <- rpt.slice.long[rpt.slice.long$type == 'rpt',]
+  plt.repeat <- ggplot(rpt.slice.rpt,aes(x=date,y=variance)) + geom_line() +
+    geom_errorbar(aes(ymin=lower,ymax=upper)) + 
     ggtitle(depVar) +
+    ylim(0,1) + 
+    ylab('Repeatability') + 
+    xlab('Days since birth') + 
     theme_classic() + 
     theme(legend.position = "none",
           rect=element_rect(fill="transparent"),
@@ -1696,13 +1728,19 @@ func.weekly.intercepts <- function(depVar,data) {
           axis.line = element_line(linewidth = 0.5, colour = "black"),
           axis.ticks = element_line(colour = "black"),
           axis.text = element_text(size = 12, colour = "black"),
-          axis.title = element_text(size = 14, face = "bold", colour = "black",text(depVar)),
+          axis.title = element_text(size = 14, face = "bold", colour = "black"),
           plot.title = element_text(hjust = 0.5, size = 14)) 
-  
+  ylims <- c(0,1)
+  if (depVar == 'dist_mean') {
+    ylims <- c(0,500)
+  }
   plt.week <- ggplot(pred.intercepts, aes(x=date, y=blup, group=picomp, color=picomp)) + 
     geom_line() + 
     ggtitle(depVar) +
     theme_classic() + 
+    ylim(ylims) + 
+    ylab(depVar) + 
+    xlab('Days since birth') + 
     theme(legend.position = "none",
           rect=element_rect(fill="transparent"),
           panel.background=element_rect(fill="transparent"),
@@ -1715,20 +1753,27 @@ func.weekly.intercepts <- function(depVar,data) {
 }
 
 test.slice.long <- func.weekly.intercepts("dist_mean",indv.com)
-plt.repeat <- ggplot(test.slice.long,aes(x=date,y=rpt)) + geom_point() + 
-  ggtitle("test") +
-  theme_classic() + 
-  theme(legend.position = "none",
-        rect=element_rect(fill="transparent"),
-        panel.background=element_rect(fill="transparent"),
-        axis.line = element_line(linewidth = 0.5, colour = "black"),
-        axis.ticks = element_line(colour = "black"),
-        axis.text = element_text(size = 12, colour = "black"),
-        axis.title = element_text(size = 14, face = "bold", colour = "black"),
-        plot.title = element_text(hjust = 0.5, size = 14)) 
-
+test.slice.rpt <- test.slice.long[test.slice.long$type == 'rpt',]
+plt.repeat <- ggplot(test.slice.rpt,aes(x=date,y=variance)) + geom_line() +
+  geom_errorbar(aes(ymin=lower,ymax=upper)) + 
+  ggtitle("DepVar") +
+  ylim(0,1) + 
+  ylab('Repeatability') + 
+  xlab('Days since birth') + 
+    theme_classic() + 
+    theme(legend.position = "none",
+          rect=element_rect(fill="transparent"),
+          panel.background=element_rect(fill="transparent"),
+          axis.line = element_line(linewidth = 0.5, colour = "black"),
+          axis.ticks = element_line(colour = "black"),
+          axis.text = element_text(size = 12, colour = "black"),
+          axis.title = element_text(size = 14, face = "bold", colour = "black"),
+          plot.title = element_text(hjust = 0.5, size = 14)) 
+plt.repeat
 #testplot.week <- func.weekly.intercepts("dist_mean",indv.com)
-list[testplot.week,testplot.repeat] <- func.weekly.intercepts("dist_mean",indv.long)
+plots <- func.weekly.intercepts("dist_mean",indv.long)
+testplot.week <- plots[[1]]
+testplot.repeat <- plots[[2]]
 testplot.week
 testplot.repeat
 
@@ -1875,12 +1920,13 @@ for (depVar in c('dist_mean','polarity_mean','angleC_mean','rotation_mean','angM
   func.overall.repeat(depVar,indv.com)
   
   print("Intercepts:")
-  plot.weekly <- func.weekly.intercepts(depVar,indv.long)
-  print(plot.weekly)
+  plots.weekly <- func.weekly.intercepts(depVar,indv.long)
+  print(plots.weekly[1])
+  print(plots.weekly[2])
   
-  plot.daily <- func.triday.intercepts(depVar,indv.com)
-  print(plot.daily)
-  
+  plots.daily <- func.triday.intercepts(depVar,indv.com)
+  print(plots.daily[1])
+  print(plots.daily[2])
   break
 }
 
