@@ -132,7 +132,7 @@ if __name__ == "__main__":
             f_texts.append(ax.text(x,y,build_fstr(first_frame,f)))
     cors = ['red','green','blue','purple']
     scat = ax.scatter([0,0,0,0],[0,0,0,0],c=cors)
-    frame_plot, = ax.plot((0,0),(0,600),color='black',alpha=alph)
+    #frame_plot, = ax.plot((0,0),(0,600),color='black',alpha=alph)
     frame_id = ax.text(5,790,"0")
     plt.xlim(0,800)
     plt.ylim(0,800)
@@ -159,7 +159,7 @@ if __name__ == "__main__":
         #print(i,x,y)
         array = np.c_[xs,ys]
         scat.set_offsets(array)
-        frame_plot.set_data([(i,i),(0,600)])
+        #frame_plot.set_data([(i,i),(0,600)])
         frame_id.set_text(str(i))
         lines = []
         for j in range(len(xs)):
@@ -184,6 +184,6 @@ if __name__ == "__main__":
     #ani = animation.FuncAnimation(fig, animate, frames = n_frames-first_frame,interval=1000)
     ani = animation.FuncAnimation(fig, animate, frames = 200,interval=1000)
     writervideo = animation.FFMpegWriter(fps=10)
-    ani.save('test2.mp4', writer=writervideo)
+    ani.save('test_day37.mp4', writer=writervideo)
     #plt.show()
 

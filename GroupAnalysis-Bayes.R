@@ -1415,10 +1415,12 @@ func.triday.intercepts <- function(depVar,data) {
   pred.intercepts <- data.frame(date, picomp, blup)
   
 
-  plt.repeat <- ggplot(rpt.slice.rpt,aes(x=date,y=variance)) + geom_line() +
-    geom_errorbar(aes(ymin=lower,ymax=upper)) + 
+  plt.repeat <- ggplot(rpt.slice.rpt,aes(x=date,y=variance)) + 
+    geom_point(shape=1) + 
+    #geom_line() +
+    #geom_errorbar(aes(ymin=lower,ymax=upper)) + 
     ggtitle(depVar) +
-    ylim(0,1) + 
+    #ylim(0,1) + 
     ylab('Repeatability') + 
     xlab('Days since birth') + 
     theme_classic() + 
@@ -1439,7 +1441,7 @@ func.triday.intercepts <- function(depVar,data) {
     geom_line() + 
     ggtitle(depVar) +
     theme_classic() + 
-    ylim(ylims) + 
+    #ylim(ylims) + 
     ylab(depVar) + 
     xlab('Days since birth') + 
     theme(legend.position = "none",
@@ -1715,10 +1717,12 @@ func.weekly.intercepts <- function(depVar,data) {
   pred.intercepts <- data.frame(date, picomp, blup)
   
   rpt.slice.rpt <- rpt.slice.long[rpt.slice.long$type == 'rpt',]
-  plt.repeat <- ggplot(rpt.slice.rpt,aes(x=date,y=variance)) + geom_line() +
-    geom_errorbar(aes(ymin=lower,ymax=upper)) + 
+  plt.repeat <- ggplot(rpt.slice.rpt,aes(x=date,y=variance)) + 
+    geom_point(shape=1,size=4) + 
+    #geom_line() +
+    #geom_errorbar(aes(ymin=lower,ymax=upper)) + 
     ggtitle(depVar) +
-    ylim(0,1) + 
+    #ylim(0,1) + 
     ylab('Repeatability') + 
     xlab('Days since birth') + 
     theme_classic() + 
@@ -1738,7 +1742,7 @@ func.weekly.intercepts <- function(depVar,data) {
     geom_line() + 
     ggtitle(depVar) +
     theme_classic() + 
-    ylim(ylims) + 
+    #ylim(ylims) + 
     ylab(depVar) + 
     xlab('Days since birth') + 
     theme(legend.position = "none",
@@ -1753,6 +1757,8 @@ func.weekly.intercepts <- function(depVar,data) {
 }
 
 test.slice.long <- func.weekly.intercepts("dist_mean",indv.com)
+test.slice.long[2]
+
 test.slice.rpt <- test.slice.long[test.slice.long$type == 'rpt',]
 plt.repeat <- ggplot(test.slice.rpt,aes(x=date,y=variance)) + geom_line() +
   geom_errorbar(aes(ymin=lower,ymax=upper)) + 
@@ -1898,33 +1904,34 @@ func.weekly.predict <- function(depVar,data) {
 names(indv.com)
 
 #'dist_mean',
-for (depVar in c('dist_mean','polarity_mean','angleC_mean','rotation_mean','angMC_mean','pDistC_mean','velC_mean','vel_mean','pDist_mean')) {
+for (depVar in c('dist_mean','angleC_mean','angMC_mean','pDist_mean','pDistC_mean','velC_mean')) {
+#for (depVar in c('dist_mean','polarity_mean','angleC_mean','rotation_mean','angMC_mean','pDistC_mean','velC_mean','vel_mean','pDist_mean')) {
 #for (depVar in c('angMC_mean','pDistC_mean','velC_mean','vel_mean','pDist_mean')) {
 #for (depVar in c('dist_mean','vel_mean','pDist_mean')) {
 #for (depVar in c('pDist_mean')) {
   print(depVar)
   hourly_dep <- paste(depVar,'_',sep="")
   print("DIC")
-  func.DIC(depVar,'ExpDay',indv.com)
+  #func.DIC(depVar,'ExpDay',indv.com)
 
   print("Day1 Rpt")
-  func.hourly.repeat(hourly_dep,day1.com)
+  #func.hourly.repeat(hourly_dep,day1.com)
   
   print("Day27 Rpt")
-  func.hourly.repeat(hourly_dep,day27.com)
+  #func.hourly.repeat(hourly_dep,day27.com)
   
   print("Week:Week predictability")
-  func.weekly.predict(depVar,indv.com)
+  #func.weekly.predict(depVar,indv.com)
   
   print("Overall rpt")
-  func.overall.repeat(depVar,indv.com)
+  #func.overall.repeat(depVar,indv.com)
   
   print("Intercepts:")
   plots.weekly <- func.weekly.intercepts(depVar,indv.long)
   print(plots.weekly[1])
   print(plots.weekly[2])
   
-  plots.daily <- func.triday.intercepts(depVar,indv.com)
+  #plots.daily <- func.triday.intercepts(depVar,indv.com)
   print(plots.daily[1])
   print(plots.daily[2])
 
