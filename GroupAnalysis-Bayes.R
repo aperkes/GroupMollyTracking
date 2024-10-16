@@ -39,6 +39,11 @@ long_data <- indv %>%
   filter(Pi %in% piDays[piDays$max >= 62,]$Pi)
 
 indv.long <- long_data[long_data$ExpDay <= 63,]
+
+long_data54 <- indv %>%
+  filter(Pi %in% piDays[piDays$max >= 54,]$Pi)
+indv.long54 <- long_data54[long_data54$ExpDay <= 54,]
+
 ## Only look at 4 weeks for fish where we have that
 good_data <- indv[indv$Pi != "pi34",]
 good_data <- good_data[good_data$Pi != "pi41",]
@@ -725,6 +730,7 @@ ggplot(pred.intercepts, aes(x=date, y=blup, group=picomp, color=picomp)) +
 
 indv.com$week <- indv.com$ExpDay %/% 7 ## Is this integer division
 indv.com$triday <- indv.com$ExpDay %/% 3
+indv.com$fiver <- indv.com$ExpDay %/% 5
 
 ### This does it by three day blocks, but that makes the sample size really low
 indv.wide <- indv.com[indv.com$triday < 10,] %>%
@@ -1699,7 +1705,7 @@ func.weekly.intercepts <- function(depVar,data) {
   so that way these numbers are absolute values, as opposed to differences from overall'
   
   intercepts0 <- unname(posterior.mode(col.week0$Sol)[3:10] + posterior.mode(col.week0$Sol)["(Intercept)"])
-  intercepts1 <- unname(posterior.mode(col.week3$Sol)[3:10] + posterior.mode(col.week0$Sol)["(Intercept)"])
+  intercepts1 <- unname(posterior.mode(col.week1$Sol)[3:10] + posterior.mode(col.week1$Sol)["(Intercept)"])
   intercepts2 <- unname(posterior.mode(col.week2$Sol)[3:10] + posterior.mode(col.week2$Sol)["(Intercept)"])
   intercepts3 <- unname(posterior.mode(col.week3$Sol)[3:10] + posterior.mode(col.week3$Sol)["(Intercept)"])
   intercepts4 <- unname(posterior.mode(col.week4$Sol)[3:10] + posterior.mode(col.week4$Sol)["(Intercept)"])
@@ -1713,6 +1719,320 @@ func.weekly.intercepts <- function(depVar,data) {
   picomp <- rep(ids, 10)
   blup <- c(intercepts0, intercepts1, intercepts2, intercepts3, intercepts4, intercepts5, 
             intercepts6, intercepts7, intercepts8, intercepts9)
+  
+  pred.intercepts <- data.frame(date, picomp, blup)
+  
+  rpt.slice.rpt <- rpt.slice.long[rpt.slice.long$type == 'rpt',]
+  print(dim(pred.intercepts))
+  print(dim(ci.rpt))
+  print(blup)
+  plt.repeat <- ggplot(rpt.slice.rpt,aes(x=date,y=variance)) + 
+    geom_point(shape=1,size=4) + 
+    #geom_line() +
+    #geom_errorbar(aes(ymin=lower,ymax=upper)) + 
+    ggtitle(depVar) +
+    #ylim(0,1) + 
+    ylab('Repeatability') + 
+    xlab('Days since birth') + 
+    theme_classic() + 
+    theme(legend.position = "none",
+          rect=element_rect(fill="transparent"),
+          panel.background=element_rect(fill="transparent"),
+          axis.line = element_line(linewidth = 0.5, colour = "black"),
+          axis.ticks = element_line(colour = "black"),
+          axis.text = element_text(size = 12, colour = "black"),
+          axis.title = element_text(size = 14, face = "bold", colour = "black"),
+          plot.title = element_text(hjust = 0.5, size = 14)) 
+  ylims <- c(0,1)
+  if (depVar == 'dist_mean') {
+    ylims <- c(0,500)
+  }
+  plt.week <- ggplot(pred.intercepts, aes(x=date, y=blup, group=picomp, color=picomp)) + 
+    geom_line() + 
+    ggtitle(depVar) +
+    theme_classic() + 
+    #ylim(ylims) + 
+    ylab(depVar) + 
+    xlab('Days since birth') + 
+    theme(legend.position = "none",
+          rect=element_rect(fill="transparent"),
+          panel.background=element_rect(fill="transparent"),
+          axis.line = element_line(linewidth = 0.5, colour = "black"),
+          axis.ticks = element_line(colour = "black"),
+          axis.text = element_text(size = 12, colour = "black"),
+          axis.title = element_text(size = 14, face = "bold", colour = "black"),
+          plot.title = element_text(hjust = 0.5, size = 14)) 
+  return(list(plt.week,plt.repeat))
+}
+
+
+func.fiver.intercepts <- function(depVar,data) {
+  # select only those IDs in that vector & only keep up to obs 70 & make obs 1 = 0
+  indv.54days.cen <- data %>%
+    mutate(Fiver0 = ExpDay, 
+           Fiver1 = ExpDay-5,
+           Fiver2 = ExpDay-10,
+           Fiver3 = ExpDay-15,
+           Fiver4 = ExpDay-20,
+           Fiver5 = ExpDay-25,
+           Fiver6 = ExpDay-30,
+           Fiver7 = ExpDay-35,
+           Fiver8 = ExpDay-40,
+           Fiver9 = ExpDay-45,
+           Fiver10 = ExpDay-50)
+  
+  #indv.60days.cen <- indv.36days.cen[indv.60days.cen$Pi != "pi12",]
+  set.seed(403)
+  fixed <- as.formula(paste(depVar,"~ Fiver0",sep=""))
+  print('fiver0')
+  col.fiver0 <- MCMCglmm(fixed = fixed, 
+                        random = ~us(1 + Fiver0):Pi, 
+                        data = indv.54days.cen, 
+                        family = "gaussian",
+                        pr = T,
+                        prior = prior.id.slope, 
+                        nitt=310000, burnin = 10000, thin = 200, 
+                        verbose = F)
+  
+  set.seed(765)
+  fixed <- as.formula(paste(depVar,"~ Fiver1",sep=""))
+  col.fiver1 <- MCMCglmm(fixed = fixed, 
+                        random = ~us(1 + Fiver1):Pi, 
+                        data = indv.54days.cen, 
+                        family = "gaussian",
+                        pr = T,
+                        prior = prior.id.slope, 
+                        nitt=310000, burnin = 10000, thin = 200, 
+                        verbose = F)
+  
+  fixed <- as.formula(paste(depVar,"~ Fiver2",sep=""))
+  col.fiver2 <- MCMCglmm(fixed = fixed, 
+                        random = ~us(1 + Fiver2):Pi, 
+                        data = indv.54days.cen, 
+                        family = "gaussian",
+                        pr = T,
+                        prior = prior.id.slope, 
+                        nitt=310000, burnin = 10000, thin = 200, 
+                        verbose = F)
+  
+  print('Fiver3')
+  fixed <- as.formula(paste(depVar,"~ Fiver3",sep=""))
+  col.fiver3 <- MCMCglmm(fixed = fixed, 
+                        random = ~us(1 + Fiver3):Pi, 
+                        data = indv.54days.cen, 
+                        family = "gaussian",
+                        pr = T,
+                        prior = prior.id.slope, 
+                        nitt=310000, burnin = 10000, thin = 200, 
+                        verbose = F)
+  
+  fixed <- as.formula(paste(depVar,"~ Fiver4",sep=""))
+  col.fiver4 <- MCMCglmm(fixed = fixed, 
+                        random = ~us(1 + Fiver4):Pi, 
+                        data = indv.54days.cen, 
+                        family = "gaussian",
+                        pr = T,
+                        prior = prior.id.slope, 
+                        nitt=310000, burnin = 10000, thin = 200, 
+                        verbose = F)
+  
+  fixed <- as.formula(paste(depVar,"~ Fiver5",sep=""))
+  col.fiver5 <- MCMCglmm(fixed = fixed, 
+                        random = ~us(1 + Fiver5):Pi, 
+                        data = indv.54days.cen, 
+                        family = "gaussian",
+                        pr = T,
+                        prior = prior.id.slope, 
+                        nitt=310000, burnin = 10000, thin = 200, 
+                        verbose = F)
+  
+  fixed <- as.formula(paste(depVar,"~ Fiver6",sep=""))
+  col.fiver6 <- MCMCglmm(fixed = fixed, 
+                        random = ~us(1 + Fiver6):Pi, 
+                        data = indv.54days.cen, 
+                        family = "gaussian",
+                        pr = T,
+                        prior = prior.id.slope, 
+                        nitt=310000, burnin = 10000, thin = 200, 
+                        verbose = F)
+  
+  fixed <- as.formula(paste(depVar,"~ Fiver7",sep=""))
+  col.fiver7 <- MCMCglmm(fixed = fixed, 
+                        random = ~us(1 + Fiver7):Pi, 
+                        data = indv.54days.cen, 
+                        family = "gaussian",
+                        pr = T,
+                        prior = prior.id.slope, 
+                        nitt=310000, burnin = 10000, thin = 200, 
+                        verbose = F)
+  
+  fixed <- as.formula(paste(depVar,"~ Fiver8",sep=""))
+  col.fiver8 <- MCMCglmm(fixed = fixed, 
+                        random = ~us(1 + Fiver8):Pi, 
+                        data = indv.54days.cen, 
+                        family = "gaussian",
+                        pr = T,
+                        prior = prior.id.slope, 
+                        nitt=310000, burnin = 10000, thin = 200, 
+                        verbose = F)
+  
+  fixed <- as.formula(paste(depVar,"~ Fiver9",sep=""))
+  col.fiver9 <- MCMCglmm(fixed = fixed, 
+                        random = ~us(1 + Fiver9):Pi, 
+                        data = indv.54days.cen, 
+                        family = "gaussian",
+                        pr = T,
+                        prior = prior.id.slope, 
+                        nitt=310000, burnin = 10000, thin = 200, 
+                        verbose = F)
+  fixed <- as.formula(paste(depVar,"~ Fiver10",sep=""))
+  col.fiver10 <- MCMCglmm(fixed = fixed, 
+                        random = ~us(1 + Fiver10):Pi, 
+                        data = indv.54days.cen, 
+                        family = "gaussian",
+                        pr = T,
+                        prior = prior.id.slope, 
+                        nitt=310000, burnin = 10000, thin = 200, 
+                        verbose = F)
+  
+  print('done with models')
+  
+  #plot(col.week0$VCV,)
+  
+  ## Copy pasting so much, getting day: variance
+  #date <- c(0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30) ## "It's a magic number"
+  #date <- c(0,7,14,21,28,35,42,49,56,63)
+  date <- c(0,5,10,15,20,25,30,35,40,45,50)
+  
+  rpt0 <- col.fiver0$VCV[,"(Intercept):(Intercept).Pi"]/(col.fiver0$VCV[,"(Intercept):(Intercept).Pi"] + posterior.mode(col.fiver0$VCV[,"units"]))
+  rpt1 <- col.fiver1$VCV[,"(Intercept):(Intercept).Pi"]/(col.fiver1$VCV[,"(Intercept):(Intercept).Pi"] + posterior.mode(col.fiver1$VCV[,"units"]))
+  rpt2 <- col.fiver2$VCV[,"(Intercept):(Intercept).Pi"]/(col.fiver2$VCV[,"(Intercept):(Intercept).Pi"] + posterior.mode(col.fiver2$VCV[,"units"]))
+  rpt3 <- col.fiver3$VCV[,"(Intercept):(Intercept).Pi"]/(col.fiver3$VCV[,"(Intercept):(Intercept).Pi"] + posterior.mode(col.fiver3$VCV[,"units"]))
+  rpt4 <- col.fiver4$VCV[,"(Intercept):(Intercept).Pi"]/(col.fiver4$VCV[,"(Intercept):(Intercept).Pi"] + posterior.mode(col.fiver4$VCV[,"units"]))
+  rpt5 <- col.fiver5$VCV[,"(Intercept):(Intercept).Pi"]/(col.fiver5$VCV[,"(Intercept):(Intercept).Pi"] + posterior.mode(col.fiver5$VCV[,"units"]))
+  rpt6 <- col.fiver6$VCV[,"(Intercept):(Intercept).Pi"]/(col.fiver6$VCV[,"(Intercept):(Intercept).Pi"] + posterior.mode(col.fiver6$VCV[,"units"]))
+  rpt7 <- col.fiver7$VCV[,"(Intercept):(Intercept).Pi"]/(col.fiver7$VCV[,"(Intercept):(Intercept).Pi"] + posterior.mode(col.fiver7$VCV[,"units"]))
+  rpt8 <- col.fiver8$VCV[,"(Intercept):(Intercept).Pi"]/(col.fiver8$VCV[,"(Intercept):(Intercept).Pi"] + posterior.mode(col.fiver8$VCV[,"units"]))
+  rpt9 <- col.fiver9$VCV[,"(Intercept):(Intercept).Pi"]/(col.fiver9$VCV[,"(Intercept):(Intercept).Pi"] + posterior.mode(col.fiver9$VCV[,"units"]))
+  rpt10 <- col.fiver10$VCV[,"(Intercept):(Intercept).Pi"]/(col.fiver10$VCV[,"(Intercept):(Intercept).Pi"] + posterior.mode(col.fiver10$VCV[,"units"]))
+  
+  rpt <- c(posterior.mode(rpt0), 
+           posterior.mode(rpt1),
+           posterior.mode(rpt2),
+           posterior.mode(rpt3),
+           posterior.mode(rpt4),
+           posterior.mode(rpt5),
+           posterior.mode(rpt6),
+           posterior.mode(rpt7),
+           posterior.mode(rpt8),
+           posterior.mode(rpt9),
+           posterior.mode(rpt10))
+  
+  
+  ci.rpt <- c(HPDinterval(rpt0)[1:2],
+              HPDinterval(rpt1)[1:2],
+              HPDinterval(rpt2)[1:2],
+              HPDinterval(rpt3)[1:2],
+              HPDinterval(rpt4)[1:2],
+              HPDinterval(rpt5)[1:2],
+              HPDinterval(rpt6)[1:2],
+              HPDinterval(rpt7)[1:2],
+              HPDinterval(rpt8)[1:2],
+              HPDinterval(rpt9)[1:2],
+              HPDinterval(rpt10)[1:2])
+  ci.rpt <- matrix(ci.rpt, nrow = 11, byrow = T)
+  
+  post.id <- c(posterior.mode(col.fiver0$VCV[,"(Intercept):(Intercept).Pi"]), 
+               posterior.mode(col.fiver1$VCV[,"(Intercept):(Intercept).Pi"]),
+               posterior.mode(col.fiver2$VCV[,"(Intercept):(Intercept).Pi"]),
+               posterior.mode(col.fiver3$VCV[,"(Intercept):(Intercept).Pi"]),
+               posterior.mode(col.fiver4$VCV[,"(Intercept):(Intercept).Pi"]),
+               posterior.mode(col.fiver5$VCV[,"(Intercept):(Intercept).Pi"]),
+               posterior.mode(col.fiver6$VCV[,"(Intercept):(Intercept).Pi"]),
+               posterior.mode(col.fiver7$VCV[,"(Intercept):(Intercept).Pi"]),
+               posterior.mode(col.fiver8$VCV[,"(Intercept):(Intercept).Pi"]),
+               posterior.mode(col.fiver9$VCV[,"(Intercept):(Intercept).Pi"]),
+               posterior.mode(col.fiver10$VCV[,"(Intercept):(Intercept).Pi"]))
+  
+  ci.id <- c(HPDinterval(col.fiver0$VCV[,"(Intercept):(Intercept).Pi"])[1:2], 
+             HPDinterval(col.fiver1$VCV[,"(Intercept):(Intercept).Pi"])[1:2], 
+             HPDinterval(col.fiver2$VCV[,"(Intercept):(Intercept).Pi"])[1:2], 
+             HPDinterval(col.fiver3$VCV[,"(Intercept):(Intercept).Pi"])[1:2], 
+             HPDinterval(col.fiver4$VCV[,"(Intercept):(Intercept).Pi"])[1:2], 
+             HPDinterval(col.fiver5$VCV[,"(Intercept):(Intercept).Pi"])[1:2], 
+             HPDinterval(col.fiver6$VCV[,"(Intercept):(Intercept).Pi"])[1:2], 
+             HPDinterval(col.fiver7$VCV[,"(Intercept):(Intercept).Pi"])[1:2], 
+             HPDinterval(col.fiver8$VCV[,"(Intercept):(Intercept).Pi"])[1:2],
+             HPDinterval(col.fiver9$VCV[,"(Intercept):(Intercept).Pi"])[1:2],
+             HPDinterval(col.fiver10$VCV[,"(Intercept):(Intercept).Pi"])[1:2])
+  ci.id <-matrix(ci.id, nrow = 11, byrow = T)
+  
+  post.w <- c(posterior.mode(col.fiver0$VCV[,"units"]),
+              posterior.mode(col.fiver1$VCV[,"units"]),
+              posterior.mode(col.fiver2$VCV[,"units"]),
+              posterior.mode(col.fiver3$VCV[,"units"]),
+              posterior.mode(col.fiver4$VCV[,"units"]),
+              posterior.mode(col.fiver5$VCV[,"units"]),
+              posterior.mode(col.fiver6$VCV[,"units"]),
+              posterior.mode(col.fiver7$VCV[,"units"]),
+              posterior.mode(col.fiver8$VCV[,"units"]),
+              posterior.mode(col.fiver9$VCV[,"units"]),
+              posterior.mode(col.fiver10$VCV[,"units"]))
+  
+  ci.w <- c(HPDinterval(col.fiver0$VCV[,"units"])[1:2],   
+            HPDinterval(col.fiver1$VCV[,"units"])[1:2], 
+            HPDinterval(col.fiver2$VCV[,"units"])[1:2], 
+            HPDinterval(col.fiver3$VCV[,"units"])[1:2], 
+            HPDinterval(col.fiver4$VCV[,"units"])[1:2], 
+            HPDinterval(col.fiver5$VCV[,"units"])[1:2], 
+            HPDinterval(col.fiver6$VCV[,"units"])[1:2], 
+            HPDinterval(col.fiver7$VCV[,"units"])[1:2], 
+            HPDinterval(col.fiver8$VCV[,"units"])[1:2], 
+            HPDinterval(col.fiver9$VCV[,"units"])[1:2],
+            HPDinterval(col.fiver10$VCV[,"units"])[1:2]) 
+  
+  ci.w <- matrix(ci.w, nrow = 11, byrow = T)            
+  
+  #plot(post.id ~ date)
+  #plot(post.w ~ date)
+  #plot(rpt ~ date)
+  
+  
+  rpt.slice.wide <- data.frame(date, rpt, "lower.rpt" = ci.rpt[,1], "upper.rpt" = ci.rpt[,2],
+                               post.id, "lower.id" = ci.id[,1], "upper.id" = ci.id[,2], 
+                               post.w, "lower.w" = ci.w[,1], "upper.w" = ci.w[,2])
+  
+  rpt.slice.long <- data.frame("date" = rep(date, 3), 
+                               "type" = rep(c("rpt", "id", "within"), each = 11),
+                               "variance" = unname(c(rpt, post.id, post.w)),
+                               "lower" = unname(c(ci.rpt[,1], ci.id[,1], ci.w[,1])),
+                               "upper" = unname(c(ci.rpt[,2], ci.id[,2], ci.w[,2])))
+  
+  ### This is very dataset specific, you may need to check it: 
+  ids <- colnames(col.fiver0$Sol)[3:12] ## Make sure this matches below
+  ids <- substr(ids, 16, 19)
+  
+  'this pulls out the individual intercepts and adds in the overall intercepts
+  
+  so that way these numbers are absolute values, as opposed to differences from overall'
+  
+  intercepts0 <- unname(posterior.mode(col.fiver0$Sol)[3:12] + posterior.mode(col.fiver0$Sol)["(Intercept)"])
+  intercepts1 <- unname(posterior.mode(col.fiver1$Sol)[3:12] + posterior.mode(col.fiver0$Sol)["(Intercept)"])
+  intercepts2 <- unname(posterior.mode(col.fiver2$Sol)[3:12] + posterior.mode(col.fiver2$Sol)["(Intercept)"])
+  intercepts3 <- unname(posterior.mode(col.fiver3$Sol)[3:12] + posterior.mode(col.fiver3$Sol)["(Intercept)"])
+  intercepts4 <- unname(posterior.mode(col.fiver4$Sol)[3:12] + posterior.mode(col.fiver4$Sol)["(Intercept)"])
+  intercepts5 <- unname(posterior.mode(col.fiver5$Sol)[3:12] + posterior.mode(col.fiver5$Sol)["(Intercept)"])
+  intercepts6 <- unname(posterior.mode(col.fiver6$Sol)[3:12] + posterior.mode(col.fiver6$Sol)["(Intercept)"])
+  intercepts7 <- unname(posterior.mode(col.fiver7$Sol)[3:12] + posterior.mode(col.fiver7$Sol)["(Intercept)"])
+  intercepts8 <- unname(posterior.mode(col.fiver8$Sol)[3:12] + posterior.mode(col.fiver8$Sol)["(Intercept)"])
+  intercepts9 <- unname(posterior.mode(col.fiver9$Sol)[3:12] + posterior.mode(col.fiver9$Sol)["(Intercept)"])
+  intercepts10 <- unname(posterior.mode(col.fiver10$Sol)[3:12] + posterior.mode(col.fiver10$Sol)["(Intercept)"])
+  
+  #date <- rep(c(0,7,14,21,28,35,42,49,56,63), each = 8)
+  date <- rep(c(0,5,10,15,20,25,30,35,40,45,50), each=10)
+  picomp <- rep(ids, 11)
+  blup <- c(intercepts0, intercepts1, intercepts2, intercepts3, intercepts4, intercepts5, 
+            intercepts6, intercepts7, intercepts8, intercepts9,intercepts10)
   
   pred.intercepts <- data.frame(date, picomp, blup)
   
@@ -1755,6 +2075,14 @@ func.weekly.intercepts <- function(depVar,data) {
           plot.title = element_text(hjust = 0.5, size = 14)) 
   return(list(plt.week,plt.repeat))
 }
+
+test.slice.long54 <- func.fiver.intercepts("dist_mean",indv.long54)
+test.slice.long54[2]
+test.slice.long54[1]
+
+test.slice.long54 <- func.fiver.intercepts("velC_mean",indv.long54)
+test.slice.long54[2]
+test.slice.long54[1]
 
 test.slice.long <- func.weekly.intercepts("dist_mean",indv.com)
 test.slice.long[2]
@@ -1957,6 +2285,34 @@ for (depVar in c('angleC_mean','head_mean','pDistC_mean','velC_mean')) {
 ggplot(indv.com,aes(x=ExpDay,y=dist_mean,group=Pi,color=Pi)) + geom_line()
 
 ggplot(indv.long,aes(x=ExpDay,y=dist_mean,group=Pi,color=Pi)) + 
+  geom_line() + 
+  theme_classic() + 
+  theme(legend.position = "none",
+        rect=element_rect(fill="transparent"),
+        panel.background=element_rect(fill="transparent"),
+        axis.line = element_line(linewidth = 0.5, colour = "black"),
+        axis.ticks = element_line(colour = "black"),
+        axis.text = element_text(size = 12, colour = "black"),
+        axis.title = element_text(size = 14, face = "bold", colour = "black"),
+        plot.title = element_text(hjust = 0.5, size = 0)) 
+
+indv.slidingMean <- arrange(indv.long54,Pi,ExpDay) %>% dplyr::mutate(rollingDist=rollapply(dist_mean,5,mean,align='right',fill=NA),rollingVelC=rollapply(velC_mean,5,mean,align='right',fill=NA))
+
+indv.slidingMean$rollingDistNorm <- (800 - indv.slidingMean$rollingDist) / 800
+
+ggplot(indv.slidingMean,aes(x=ExpDay,y=rollingDistNorm,group=Pi,color=Pi)) + 
+  geom_line() + 
+  theme_classic() + 
+  theme(legend.position = "none",
+        rect=element_rect(fill="transparent"),
+        panel.background=element_rect(fill="transparent"),
+        axis.line = element_line(linewidth = 0.5, colour = "black"),
+        axis.ticks = element_line(colour = "black"),
+        axis.text = element_text(size = 12, colour = "black"),
+        axis.title = element_text(size = 14, face = "bold", colour = "black"),
+        plot.title = element_text(hjust = 0.5, size = 0)) 
+
+ggplot(indv.slidingMean,aes(x=ExpDay,y=rollingVelC,group=Pi,color=Pi)) + 
   geom_line() + 
   theme_classic() + 
   theme(legend.position = "none",
