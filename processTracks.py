@@ -68,6 +68,27 @@ def get_tracks(in_file):
     #track_array[track_array == -1] = np.nan
     return track_array,track_polar,[n_frames,n_fish,fishIDs]
 
+def clean_track(track_array,bins=80,thresh=1000):
+    clean_array = np.array(track_array)
+    a_x = clean_array[:,:,0]
+    a_y = clean_array[:,:,1]
+    flat_array = np.reshape(track_array,[-1,2])
+    flat_array = flat_array[~np.isnan(flat_array[:,0])]
+
+    hist,xedges,yedges = np.histogram2d(flat_array[:,0],flat_array[:,1],bins=bins)
+    xedges_ = [0]
+    xedges_.extend(xedges)
+    yedges_ = [0]
+    yedges_.extend(yedges)
+    clips = np.argwhere(hist > thresh)
+    for c in clips:
+        x0,x1 = xedges[c[0]],xedges[c[0]+1]
+        y0,y1 = yedges[c[1]],yedges[c[1]+1]
+        bad_spots = np.argwhere((a_y >= y0) & (a_y <= y1) & (a_x >= x0) & (a_x <= x1))
+        clean_array[bad_spots[:,0],bad_spots[:,1]] = np.nan
+    #import pdb;pdb.set_trace()
+    return clean_array
+
 def bin_tracks(track_array,bin_size=3600):
     n_arrays = int(track_array.shape[0] / 3600) ## note, this will drop possibe trailing incomplete hours
     sub_tracks = []
