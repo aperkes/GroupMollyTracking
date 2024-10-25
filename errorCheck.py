@@ -179,11 +179,11 @@ if __name__ == "__main__":
                 fish_text.set_x(line0x + 5)
                 fish_text.set_y(line0y + 5)
         vel_lc.set_segments(lines) ## Lines
-        return [im]
+        return 0
 
     #ani = animation.FuncAnimation(fig, animate, frames = n_frames-first_frame,interval=1000)
-    ani = animation.FuncAnimation(fig, animate, frames = 200,interval=1000)
-    writervideo = animation.FFMpegWriter(fps=10)
-    ani.save('test_day37.mp4', writer=writervideo)
-    #plt.show()
+    ani = animation.FuncAnimation(fig, animate, frames = 200,interval=1)
+    #writervideo = animation.FFMpegWriter(fps=10)
+    #ani.save('test_day37.mp4', writer=writervideo)
+    plt.show()
 
