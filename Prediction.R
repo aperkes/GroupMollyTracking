@@ -229,7 +229,10 @@ func.ndays.predict <- function(depVar,df,n_days) {
   }
 
 plots.predict.dist <- func.ndays.predict('dist_mean',df,5)
+
 plots.predict.dist[[2]]
+plots.predict.dist[[1]]
+
 ggsave("./figs/slidingPredict.jpg",plots.predict.dist[[2]])
 ggsave("./figs/slidingPredict.svg",plots.predict.dist[[2]])
 
@@ -489,15 +492,7 @@ rpt.plot.wall_distC <- func.rpt.plot(plots.wall_distC[[5]])
 rpt.plot.angleC <- func.rpt.plot(plots.angleC[[5]])
 rpt.plot.angle_std <- func.rpt.plot(plots.angle_std[[5]])
 
-rpt.plot.dist; sliding.dist[[1]]
-rpt.plot.angleC; sliding.angleC[[1]]
-rpt.plot.vel; sliding.vel[[1]]
-rpt.plot.wall_dist; sliding.wall_dist[[1]]
-
-#rpt.plot.vel_std
-
-rpt.plot.velC; sliding.velC[[1]]
-rpt.plot.wall_distC; sliding.wall_dist[[1]]
+## Plots are down below, after calculating sliding mean
 
 #rpt.plot.angle_std
 
@@ -546,12 +541,24 @@ sliding.wall_distC <- func.slidingMean('pDistC_mean',indv.long54,5)
 sliding.angleC <- func.slidingMean('angleC_mean',indv.long54,5)
 sliding.angle_std <- func.slidingMean('polarity_std',indv.long54,5)
 
-sliding.dist
-sliding.vel
-sliding.wall_dist
-sliding.velC
-sliding.wall_distC
-sliding.angleC
+
+rpt.plot.dist; sliding.dist[[1]]
+rpt.plot.angleC; sliding.angleC[[1]]
+rpt.plot.vel; sliding.vel[[1]]
+rpt.plot.wall_dist; sliding.wall_dist[[1]]
+
+#rpt.plot.vel_std
+
+rpt.plot.velC; sliding.velC[[1]]
+rpt.plot.wall_distC; sliding.wall_dist[[1]]
+
+
+#sliding.dist
+#sliding.vel
+#sliding.wall_dist
+#sliding.velC
+#sliding.wall_distC
+#sliding.angleC
 
 
 ## Alternative repeatability: 

@@ -18,11 +18,19 @@ library(formatR)
 
 setwd("~/Documents/Scripts/GroupMollyTracking/")
 
-indv <- read.csv("JolleTracksAll_2.csv")
+indv <- read.csv("JolleTracksAll_3.csv")
 indv$ExpDay <- as.integer(indv$ExpDay)
+
+indv[indv$Pi == 'pi11',]$ExpDay <- indv[indv$Pi == 'pi11',]$ExpDay - 16
+indv[indv$Pi == 'pi12',]$ExpDay <- indv[indv$Pi == 'pi12',]$ExpDay + 15
 
 indv$week <- indv$ExpDay %/% 7 ## Is this integer division
 indv$triday <- indv$ExpDay %/% 3
+
+indv.good <- indv[indv$ExpDay >= 0,]
+indv.good <- indv.good[indv.good$Pi != 'pi11',]
+
+indv <- indv.good
 
 hourly <- read.csv("JolleTracksHourly_2.csv")
 hourly$Hour <- as.integer(hourly$Hour)
@@ -34,7 +42,7 @@ piDays <- indv %>%
   group_by(Pi) %>%
   summarize(max = max(ExpDay))
 
-piDays[piDays$max > 60,]
+piDays[piDays$max >= 54,]
 long_data <- indv %>%
   filter(Pi %in% piDays[piDays$max >= 62,]$Pi)
 

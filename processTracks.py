@@ -402,6 +402,9 @@ if __name__ == '__main__':
 
         csv_file = '/'.join([csv_dir,csv_file])
         track_array,track_polar,_ = get_tracks(csv_file)
+        clean_array = clean_track(track_array)
+        clean_polar = clean_track(track_polar)
+        track_array,track_polar = clean_array,clean_polar
         pi,day = get_meta(csv_file,csv_dir)
         #import pdb;pdb.set_trace()
         track_stats,_ = get_stats(track_array,track_polar)
@@ -455,8 +458,8 @@ if __name__ == '__main__':
     long_df = long_df[new_cols_]
 
     if True:
-        csv_df.to_csv('./JolleTracksAll_2.csv',index=False)
-        long_df.to_csv('./JolleTracksHourly_2.csv',index=False)
+        csv_df.to_csv('./JolleTracksAll_3.csv',index=False)
+        long_df.to_csv('./JolleTracksHourly_3.csv',index=False)
 
     if False:
         fig,(ax,ax2,ax3) = plt.subplots(1,3)
