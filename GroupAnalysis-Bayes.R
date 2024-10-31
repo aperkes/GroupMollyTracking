@@ -28,7 +28,7 @@ indv$week <- indv$ExpDay %/% 7 ## Is this integer division
 indv$triday <- indv$ExpDay %/% 3
 
 indv.good <- indv[indv$ExpDay >= 0,]
-indv.good <- indv.good[indv.good$Pi != 'pi11',]
+#indv.good <- indv.good[indv.good$Pi != 'pi12',]
 
 indv <- indv.good
 

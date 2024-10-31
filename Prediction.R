@@ -2,6 +2,7 @@ depVar = "velC_scale"
 #depVar = "dist_mean"
 df <- indv.long54
 n_days = 5
+dates <- seq(0,54,n_days) ## 
 
 func.ndays.predict <- function(depVar,df,n_days) {
   #df <- indv.long54
@@ -11,7 +12,8 @@ func.ndays.predict <- function(depVar,df,n_days) {
   ## build bin column
   df$bin <- df$ExpDay %/% n_days
   
-  df <- df[df$Pi != 'pi31',] ## This one has missing values. 
+  ## Can I get away with not dropping values? 
+  #df <- df[df$Pi != 'pi31',] ## This one has missing values. 
   
   maxes <- df %>%
     group_by(Pi) %>%
@@ -743,8 +745,6 @@ layout <- "
 0000####Vw
 0000#####W
 "
-
-
 
 matrix.fig <- matrix.fig + plot_layout(design = layout)
 
