@@ -10,6 +10,8 @@ import warnings
 from tqdm import tqdm
 from datetime import datetime
 
+from processTracks import deep_clean_track
+
 import cv2
 
 warnings.filterwarnings('ignore')
@@ -438,6 +440,9 @@ if __name__ == '__main__':
 
         csv_file = '/'.join([csv_dir,csv_file])
         track_array,track_polar,[n_frames,n_fish,fishIDs] = get_tracks(csv_file)
+        clean_array,velocity_array,distance_array = deep_clean_track(track_array)
+        track_polar[np.isnan(clean_array)] = np.nan
+        track_array = clean_array
         pi,day = get_meta(csv_file,csv_dir)
         if pi not in median_arrays.keys():
             median_arrays[pi] = []
@@ -445,13 +450,16 @@ if __name__ == '__main__':
             median_arrays3[pi] = []
 
         pDist_array = track_polar[:,:,0]
-        distance_array = clean_dist(track_array)
-        velocity_array,smooth_vel = clean_vel(track_array)
-
+        #distance_array = clean_dist(track_array)
+        #velocity_array,smooth_vel = clean_vel(track_array)
+        if False:
+            smooth_vel = ndimage.gaussian_filter1d(velocity_array,5,0,radius=1)
+        else:
+            smooth_vel = velocity_array
         velocity_confident = np.array(velocity_array)
         min_dist = np.nanmin(distance_array,axis=1)
 
-        velocity_confident[min_dist < SPLIT_DIST]
+        #velocity_confident[min_dist < SPLIT_DIST]
         #distanceM_array = np.nanmean(distance_array,axis=1)
         distanceM_array = np.nanmedian(distance_array,axis=1)
 
@@ -467,7 +475,7 @@ if __name__ == '__main__':
         smooth_confident = np.array(smooth_vel)
         smooth_confident[np.isnan(velocity_array)] = np.nan
 
-        if True:
+        if False:
             velocity_array = smooth_confident
 
         ranked_velocity = np.argsort(velocity_array,axis=1)
