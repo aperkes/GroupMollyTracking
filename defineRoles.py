@@ -223,6 +223,7 @@ def get_stats(track_array,track_polar):
         distance_array[good_indices,j,i] = distance_array[good_indices,i,j]
         all_good_indices[good_indices] = True
         mean_distance = np.nanmean(np.linalg.norm(track_i[good_indices] - track_j[good_indices],axis=1))
+        mean_distance = np.nanmedian(np.linalg.norm(track_i[good_indices] - track_j[good_indices],axis=1))
         stat_array[1,i,j] = mean_distance
 
 ### Calculate speed correlation
@@ -357,12 +358,14 @@ def plot_lines(stat_list,ax=None,labels=[None,None]):
 
 
 ## optionally overlay the tracks on a video to show how they work
-def plot_video(track_array,video_file):
-    visualize = False
-    if visualize:
+def plot_video(track_array,vid_file,viz=False):
+    #visualize = False
+    if viz:
         i = 0
         cors = [(255,0,0),(0,255,0),(0,0,255),(255,0,255)]
         cap = cv2.VideoCapture(vid_file)
+        n_fish = np.shape(track_array)[1]
+        n_points = 5
         while True:
             ret, frame = cap.read()
             if not ret:
@@ -373,6 +376,9 @@ def plot_video(track_array,video_file):
                 cor = cors[f]
                 if ~np.isnan(x):
                     cv2.circle(frame,(x,y),5,cor,4)
+                for n in range(n_points):
+                    x0,y0 = track_array[i-n,f].astype(int)
+                    cv2.circle(frame,(x0,y0),5,cor,min(4-n,1))
             cv2.imshow('overlay',frame)
             if cv2.waitKey(5) & 0xFF == ord('q'):
                 break
@@ -399,7 +405,7 @@ def get_meta(csv_file,csv_dir):
 
 if __name__ == '__main__':
     csv_dir = sys.argv[1]
-    pi_dict = {'pi11':0,'pi13':1} #,'pi54':2}
+    pi_dict = {'pi13':0,'pi14':1} #,'pi54':2}
 
     df_list = []
     long_list = []
@@ -561,13 +567,14 @@ if __name__ == '__main__':
             axes[k_,0].plot(xs,median_arrays[k])
             axes[k_,1].plot(xs,median_arrays2[k])
             axes[k_,2].plot(xs,median_arrays3[k])
+        axes[0,0].set_xlim([0,55])
         axes[0,0].set_xlabel('Days since birth')
         axes[0,0].set_ylabel('Speed')
         axes[0,1].set_ylabel('Center Distance')
-        axes[0,2].set_ylabel('Mean IID by fish')
+        axes[0,2].set_ylabel('Median IID by fish')
         axes[1,0].set_ylabel('Speed')
         axes[1,1].set_ylabel('Center Distance')
-        axes[1,2].set_ylabel('Mean IID by fish')
+        axes[1,2].set_ylabel('Median IID by fish')
     else:
         n_pis = len(median_arrays.keys())
         all_std_v = np.full([n_pis,100],np.nan)

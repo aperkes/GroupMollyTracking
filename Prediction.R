@@ -42,13 +42,16 @@ func.ndays.predict <- function(depVar,df,n_days) {
         select(Pi, bin, all_of(depVar), obs.day) %>%
         spread(bin, depVar, sep = "")
   
-  df.clean <- df.wide[, colSums(is.na(df.wide)) == 0]
+  #df.clean <- df.wide[, colSums(is.na(df.wide)) == 0]
+  df.clean <- df.wide[rowSums(is.na(df.wide)) == 0,]
   
+  df.wide <- df.clean ## Is this ok? 
   ## Not sure how do handle the next trick...need to cbind an arbitrary bin0
   
   bins.list <- (names(df.clean))[3:length(names(df.clean))]
   bins.str <- paste(bins.list,collapse = ',')
   form.bins <- as.formula(paste("cbind(",bins.str,") ~ trait - 1",sep=""))
+  print(bins.list)
   n_bins <- length(bins.list)
   
   prior.b <- list(R = list(V = diag(n_bins), nu = n_bins + .002),
@@ -98,6 +101,9 @@ func.ndays.predict <- function(depVar,df,n_days) {
   df.corrs$end.bin <- as.numeric(substr(df.corrs$Var2, 4, 5))
   df.corrs$diff <- df.corrs$end.bin - df.corrs$start.bin
   
+  ## Need to shift to have it 0 indexed
+  ci.long$start.bin <- ci.long$start.bin -1
+  ci.long$end.bin <- ci.long$end.bin -1
   among.corr <- left_join(df.corrs, ci.long, by = c("start.bin", "end.bin"))
   
   p.mat <- diag(n_bins)
@@ -239,8 +245,8 @@ ggsave("./figs/slidingPredict.jpg",plots.predict.dist[[2]])
 ggsave("./figs/slidingPredict.svg",plots.predict.dist[[2]])
 
 
-df <- indv.long54
-dates <- seq(0,54,n_days) ## 
+#df <- indv.long54
+#dates <- seq(0,54,n_days) ## 
 
 func.ndays.intercepts <- function(depVar,data,n_days) {
   # select only those IDs in that vector & only keep up to obs 70 & make obs 1 = 0
@@ -563,69 +569,6 @@ rpt.plot.wall_distC; sliding.wall_dist[[1]]
 #sliding.angleC
 
 
-## Alternative repeatability: 
-
-library(lme4)
-library(rptR)
-library(DHARMa)
-## Calculate repeatability
-rep <- rpt(polarity_std ~ ExpDay + (1 | Pi), grname = 'Pi', data = indv.long54, datatype = "Gaussian")
-
-print(rep)
-## Get variance components: 
-rep.comp <- VarCorr(rep$mod)
-print(rep.comp,comp="Variance")
-
-## Residual == within group variance
-## Pi == between group variance? 
-## Why doesn't it equal repeatability? 
-
-## Check out the model, what's going on here
-simulationOutput <- simulateResiduals(fittedModel = rep$mod, plot = T)
-plot(simulationOutput)
-testDispersion(simulationOutput,alternative='less')
-testDispersion(simulationOutput)
-
-indv.long54$LogPolarityStd = log(indv.long54$polarity_std)
-
-rep <- rpt(LogPolarityStd ~ ExpDay + (1 + ExpDay | Pi), grname = 'Pi', data = indv.long54, datatype = "Gaussian")
-
-print(rep)
-## Get variance components: 
-rep.comp <- VarCorr(rep$mod)
-print(rep.comp,comp="Variance")
-
-## Residual == within group variance
-## Pi == between group variance? 
-## Why doesn't it equal repeatability? 
-
-## Check out the model, what's going on here
-simulationOutput <- simulateResiduals(fittedModel = rep$mod, plot = T)
-plot(simulationOutput)
-testDispersion(simulationOutput,alternative='less')
-testDispersion(simulationOutput)
-
-plot(fitted(rep$mod),resid(rep$mod))
-
-model.glm <- glmmTMB(formula = polarity_std ~ ExpDay + (1 | Pi), 
-                     family=beta_family(),data = indv.long54)
-simulationOutput <- simulateResiduals(fittedModel = model.glm, plot = T)
-
-plot(fitted(model.glm),resid(model.glm))
-
-plot.raw <- ggplot(indv.slidingMean,aes(x=ExpDay,y=dist_mean,group=Pi,color=Pi)) + 
-  geom_line() + 
-  ylab(paste('Rolling',depVar)) +
-  theme_classic() + 
-  theme(legend.position = "none",
-        rect=element_rect(fill="transparent"),
-        panel.background=element_rect(fill="transparent"),
-        axis.line = element_line(linewidth = 0.5, colour = "black"),
-        axis.ticks = element_line(colour = "black"),
-        axis.text = element_text(size = 12, colour = "black"),
-        axis.title = element_text(size = 14, face = "bold", colour = "black"),
-        plot.title = element_text(hjust = 0.5, size = 0)) 
-plot.raw
 
 ## Code to plot one correlation plot
 
@@ -677,6 +620,8 @@ ci.long <- left_join(test.lower, test.upper, by = c("Var1", "Var2")) %>%
          upper = value.y) %>%
   arrange(start.bin, end.bin)
 
+ci.long$start.bin <- ci.long$start.bin -1
+ci.long$end.bin <- ci.long$end.bin -1
 among.corr <- left_join(foo, ci.long, by = c("start.bin", "end.bin"))
 among.corr
 
@@ -689,7 +634,7 @@ ranking.df <- plots.dist[[6]][c("picomp","ranking")] %>%
   arrange(picomp) %>% 
   unique()
 
-ranking.df <- ranking.df[ranking.df$picomp != 'pi31',]
+#ranking.df <- ranking.df[ranking.df$picomp != 'pi31',]
 
 ranking <- ranking.df$ranking
 
@@ -714,13 +659,13 @@ for (i in seq(n_bins)) {
     n_count <- n_count + 1
     slope <- among.corr[among.corr$Var1 == bin_names.full[i] & among.corr$Var2 == bin_names.full[j],]$value
     
-    single.plot <- ggplot(binwise.blups, aes(x = .data[[bin_names[i]]], y = .data[[bin_names[[j]]]])) +
+    single.plot <- ggplot(binwise.blups, aes(x = .data[[bin_names[j]]], y = .data[[bin_names[[i]]]])) +
       geom_abline(intercept = 0, slope = slope) +
       geom_point(aes(color = ranking), size = 2) +
       #geom_point(aes(x=bin8,y=bin1)) + 
       scale_color_viridis_c(option = "plasma") +
-      #scale_x_continuous(limits = c(-0.75, 2.31), breaks = c(-0.75, 0, 0.75, 1.5, 2.25)) +
-      #scale_y_continuous(limits = c(-0.75, 2.31), breaks = c(-0.75, 0, 0.75, 1.5, 2.25)) +
+      scale_x_continuous(limits = c(-116, 84)) + #, breaks = c(-0.75, 0, 0.75, 1.5, 2.25)) +
+      scale_y_continuous(limits = c(-116, 84)) + #, breaks = c(-0.75, 0, 0.75, 1.5, 2.25)) +
       theme_classic() +
       theme(legend.position = "none",
             axis.title = element_blank(),
@@ -749,6 +694,96 @@ layout <- "
 matrix.fig <- matrix.fig + plot_layout(design = layout)
 
 matrix.fig
+
+
+## Alternative repeatability to assess model fit: 
+
+library(lme4)
+library(rptR)
+library(DHARMa)
+## Calculate repeatability
+rep.dist <- rpt(dist_mean ~ ExpDay + (1 | Pi), grname = 'Pi', data = indv.long54, datatype = "Gaussian")
+rep.vel <- rpt(vel_mean ~ ExpDay + (1 | Pi), grname = 'Pi', data = indv.long54, datatype = "Gaussian")
+rep.pDist <- rpt(pDist_mean ~ ExpDay + (1 | Pi), grname = 'Pi', data = indv.long54, datatype = "Gaussian")
+
+# These are singular (which is consistent with low repeatability)
+rep.velC <- rpt(velC_mean ~ ExpDay + (1 | Pi), grname = 'Pi', data = indv.long54, datatype = "Gaussian")
+rep.pDistC <- rpt(pDistC_mean ~ ExpDay + (1 | Pi), grname = 'Pi', data = indv.long54, datatype = "Gaussian")
+
+print(rep.dist)
+print(rep.vel)
+print(rep.pDist)
+print(rep.velC)
+print(rep.pDistC)
+
+## Get variance components: 
+rep.dist.comp <- VarCorr(rep.dist$mod)
+print(rep.comp,comp="Variance")
+
+## Residual == within group variance
+## Pi == between group variance? 
+
+
+## Check out the model, what's going on here
+simulationOutput <- simulateResiduals(fittedModel = rep.dist$mod, plot = T)
+plot(simulationOutput)
+
+simulationOutput.vel <- simulateResiduals(fittedModel = rep.vel$mod, plot = T)
+plot(simulationOutput.vel)
+
+simulationOutput.pDist <- simulateResiduals(fittedModel = rep.pDist$mod, plot = T)
+plot(simulationOutput.pDist)
+
+simulationOutput.velC <- simulateResiduals(fittedModel = rep.velC$mod, plot = T)
+plot(simulationOutput.velC)
+
+simulationOutput.pDistC <- simulateResiduals(fittedModel = rep.pDistC$mod, plot = T)
+plot(simulationOutput.pDistC)
+
+testDispersion(simulationOutput,alternative='less')
+testDispersion(simulationOutput)
+
+indv.long54$LogPolarityStd = log(indv.long54$polarity_std)
+
+rep <- rpt(LogPolarityStd ~ ExpDay + (1 + ExpDay | Pi), grname = 'Pi', data = indv.long54, datatype = "Gaussian")
+
+print(rep)
+## Get variance components: 
+rep.comp <- VarCorr(rep$mod)
+print(rep.comp,comp="Variance")
+
+## Residual == within group variance
+## Pi == between group variance? 
+## Why doesn't it equal repeatability? 
+
+## Check out the model, what's going on here
+simulationOutput <- simulateResiduals(fittedModel = rep$mod, plot = T)
+plot(simulationOutput)
+testDispersion(simulationOutput,alternative='less')
+testDispersion(simulationOutput)
+
+plot(fitted(rep$mod),resid(rep$mod))
+
+model.glm <- glmmTMB(formula = polarity_std ~ ExpDay + (1 | Pi), 
+                     family=beta_family(),data = indv.long54)
+simulationOutput <- simulateResiduals(fittedModel = model.glm, plot = T)
+
+plot(fitted(model.glm),resid(model.glm))
+
+plot.raw <- ggplot(indv.slidingMean,aes(x=ExpDay,y=dist_mean,group=Pi,color=Pi)) + 
+  geom_line() + 
+  ylab(paste('Rolling',depVar)) +
+  theme_classic() + 
+  theme(legend.position = "none",
+        rect=element_rect(fill="transparent"),
+        panel.background=element_rect(fill="transparent"),
+        axis.line = element_line(linewidth = 0.5, colour = "black"),
+        axis.ticks = element_line(colour = "black"),
+        axis.text = element_text(size = 12, colour = "black"),
+        axis.title = element_text(size = 14, face = "bold", colour = "black"),
+        plot.title = element_text(hjust = 0.5, size = 0)) 
+plot.raw
+
 
   ### Example Making a patchwork plot with 2 y-axes: 
 # Libraries
