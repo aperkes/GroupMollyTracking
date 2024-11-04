@@ -130,8 +130,11 @@ def deep_clean_track(track_array,min_dist = 20,drop_close = False):
     clean_array[np.isnan(velocity_array)] = np.nan 
     if drop_close:
         for f in range(n_fish):
-            clean_array[distance_array[:,f] < min_dist] = np.nan 
-    return clean_array
+            too_close = np.min(distance_array[:,f],axis=1) < min_dist
+            clean_array[too_close,f] = np.nan 
+            velocity_array[too_close,f] = np.nan
+            distance_array[too_close,f] = np.nan
+    return clean_array,velocity_array,distance_array
 
 def bin_tracks(track_array,bin_size=3600):
     n_arrays = int(track_array.shape[0] / 3600) ## note, this will drop possibe trailing incomplete hours
@@ -446,9 +449,12 @@ if __name__ == '__main__':
 
         csv_file = '/'.join([csv_dir,csv_file])
         track_array,track_polar,_ = get_tracks(csv_file)
-        clean_array = clean_track(track_array)
-        clean_polar = clean_track(track_polar)
-        track_array,track_polar = clean_array,clean_polar
+        #clean_array = clean_track(track_array)
+        clean_array,_1,_2 = deep_clean_track(track_array)
+        #clean_polar = clean_track(track_polar)
+        track_polar[np.isnan(clean_array)] = np.nan
+        #track_array,track_polar = clean_array,clean_polar
+        track_array = clean_array
         pi,day = get_meta(csv_file,csv_dir)
         #import pdb;pdb.set_trace()
         track_stats,_ = get_stats(track_array,track_polar)
@@ -502,8 +508,8 @@ if __name__ == '__main__':
     long_df = long_df[new_cols_]
 
     if True:
-        csv_df.to_csv('./JolleTracksAll_3.csv',index=False)
-        long_df.to_csv('./JolleTracksHourly_3.csv',index=False)
+        csv_df.to_csv('./JolleTracksAll_4.csv',index=False)
+        long_df.to_csv('./JolleTracksHourly_4.csv',index=False)
 
     if False:
         fig,(ax,ax2,ax3) = plt.subplots(1,3)
