@@ -89,6 +89,50 @@ def clean_track(track_array,bins=80,thresh=1000):
     #import pdb;pdb.set_trace()
     return clean_array
 
+def get_distance_array(track_array):
+    n_frames,n_fish,_ = np.shape(track_array)
+    distance_array = np.full([n_frames,n_fish,n_fish],np.nan)
+    for i,j in itertools.combinations(np.arange(n_fish),2):
+## Calculate correlation of distance to wall
+        xs = track_array[:,i,0]
+        ys = track_array[:,j,0]
+        good_indices = (~np.isnan(xs)) & (~np.isnan(ys))
+
+### Calculate mean distance between fish
+        track_i = track_array[:,i]
+        track_j = track_array[:,j]
+        good_indices = (~np.isnan(track_i[:,0])) & (~np.isnan(track_j[:,0]))
+
+        distance_array[good_indices,i,j] = np.linalg.norm(track_i[good_indices] - track_j[good_indices],axis=1)
+        distance_array[good_indices,j,i] = distance_array[good_indices,i,j]
+    return distance_array
+
+def get_velocity_array(track_array,MAX_VEL = 200):
+    n_frames,n_fish,_ = np.shape(track_array)
+    velocity_array = np.full([n_frames,n_fish],np.nan)
+    for n in range(n_fish):
+        velocity_array[1:,n] = get_distance(track_array[:,n])
+## Clean up tracking errors
+    velocity_array[velocity_array > MAX_VEL] = np.nan
+    return velocity_array 
+## End COpy ###
+
+def deep_clean_track(track_array,min_dist = 20,drop_close = False):
+    clean_array = clean_track(track_array) ## This drops peaks
+    n_frames,n_fish,_ = np.shape(clean_array)
+    ## Drop anywhere velocity == 0 
+    velocity_array = get_velocity_array(clean_array) 
+    distance_array = get_distance_array(clean_array)
+
+    ## add np.nan anywhere tracks are likely wrong/inconsistent
+    velocity_array[velocity_array == 0] = np.nan
+
+    clean_array[np.isnan(velocity_array)] = np.nan 
+    if drop_close:
+        for f in range(n_fish):
+            clean_array[distance_array[:,f] < min_dist] = np.nan 
+    return clean_array
+
 def bin_tracks(track_array,bin_size=3600):
     n_arrays = int(track_array.shape[0] / 3600) ## note, this will drop possibe trailing incomplete hours
     sub_tracks = []

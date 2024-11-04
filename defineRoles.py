@@ -358,29 +358,36 @@ def plot_lines(stat_list,ax=None,labels=[None,None]):
 
 
 ## optionally overlay the tracks on a video to show how they work
-def plot_video(track_array,vid_file,viz=False):
-    #visualize = False
+def plot_video(track_array,vid_file,viz=True,trail=0):
     if viz:
         i = 0
         cors = [(255,0,0),(0,255,0),(0,0,255),(255,0,255)]
         cap = cv2.VideoCapture(vid_file)
         n_fish = np.shape(track_array)[1]
-        n_points = 5
+        n_points = trail 
+        wt = 1
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
             for f in range(n_fish):
+                if np.isnan(track_array[i,f,0]):
+                    continue
                 x,y = track_array[i,f].astype(int)
-
                 cor = cors[f]
-                if ~np.isnan(x):
-                    cv2.circle(frame,(x,y),5,cor,4)
-                for n in range(n_points):
+                cv2.circle(frame,(x,y),9,cor,-1)
+                for n in range(1,n_points+1):
+                    if np.isnan(track_array[i-n,f,0]):
+                        break
                     x0,y0 = track_array[i-n,f].astype(int)
-                    cv2.circle(frame,(x0,y0),5,cor,min(4-n,1))
+                    x1,y1 = track_array[i-n+1,f].astype(int)
+                    cv2.circle(frame,(x0,y0),max(9-n,1),cor,-1)
+                    cv2.line(frame,(x0,y0),(x1,y1),cor,2)
+
             cv2.imshow('overlay',frame)
-            if cv2.waitKey(5) & 0xFF == ord('q'):
+            if cv2.waitKey(1) & 0xFF == ord('v'):
+                wt = 500
+            if cv2.waitKey(wt) & 0xFF == ord('q'):
                 break
             i += 1
         cv2.destroyAllWindows()
