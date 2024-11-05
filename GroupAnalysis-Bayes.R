@@ -18,7 +18,7 @@ library(formatR)
 
 setwd("~/Documents/Scripts/GroupMollyTracking/")
 
-indv <- read.csv("JolleTracksAll_3.csv")
+indv <- read.csv("JolleTracksAll_4.csv")
 indv$ExpDay <- as.integer(indv$ExpDay)
 
 indv[indv$Pi == 'pi11',]$ExpDay <- indv[indv$Pi == 'pi11',]$ExpDay - 16
