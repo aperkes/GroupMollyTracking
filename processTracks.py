@@ -113,7 +113,8 @@ def get_velocity_array(track_array,MAX_VEL = 200):
     for n in range(n_fish):
         velocity_array[1:,n] = get_distance(track_array[:,n])
 ## Clean up tracking errors
-    velocity_array[velocity_array > MAX_VEL] = np.nan
+    if MAX_VEL is not None:
+        velocity_array[velocity_array > MAX_VEL] = np.nan
     return velocity_array 
 ## End COpy ###
 
