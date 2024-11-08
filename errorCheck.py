@@ -15,11 +15,11 @@ from processTracks import get_stats,get_meta,get_tracks,get_distance
 # Relies on global variables
 def build_fstr(i,f):
     x,y = track_array[i,f]
-    r,thet = track_polar[i,f]
-    vel = velocity_array[i,f]
-    heading = heading_array[i,f]
-    nn_dist = nn_array[i,f]
-    mean_dist = fishMeanDist_array[i,f]
+    r,thet = np.round(track_polar[i,f],3)
+    vel = np.round(velocity_array[i,f],3)
+    heading = np.round(heading_array[i,f],3)
+    nn_dist = np.round(nn_array[i,f],3)
+    mean_dist = np.round(fishMeanDist_array[i,f],3)
 
     text_block = ('F' + str(f) + '\n' +  
                 ','.join([str((x,y)),str((r,thet))]) + '\n' +
@@ -35,7 +35,7 @@ def norm_array(arr,vmin,vmax):
   
 if __name__ == "__main__":
 
-    TEXT = False   
+    TEXT = True
     csv_file = sys.argv[1]
 
     track_array,track_polar,(n_frames,n_fish,fishIDs) = get_tracks(csv_file)
@@ -46,7 +46,7 @@ if __name__ == "__main__":
     stdR_array = np.nanstd(track_polar[:,:,0],axis=1)
     stdThet_array = np.nanstd(track_polar[:,:,1],axis=1)
     track_stats,[velocity_array,heading_array,distance_array] = get_stats(track_array,track_polar)
-
+    
     meanVel_array = np.nanmean(velocity_array,axis=1)
     stdVel_array = np.nanstd(velocity_array,axis=1)
 
@@ -130,6 +130,13 @@ if __name__ == "__main__":
         for f in range(n_fish):
             x,y = track_array[first_frame,f] + 5
             f_texts.append(ax.text(x,y,build_fstr(first_frame,f)))
+
+    key = "Fish ID \n" \
+            "(x,y); (r,theta)) \n" \
+            "velocity; heading \n" \
+            "mean_dist; nn_dist."
+
+    ax.text(800,700,key)
     cors = ['red','green','blue','purple']
     scat = ax.scatter([0,0,0,0],[0,0,0,0],c=cors)
     #frame_plot, = ax.plot((0,0),(0,600),color='black',alpha=alph)
@@ -153,6 +160,9 @@ if __name__ == "__main__":
             cap.set(cv2.CAP_PROP_POS_FRAMES, i + first_frame -1)
             res,frame=cap.read()
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            #if cv2.waitKey(5) & 0xFF == ord('p'):
+            #    while 0xFF is not ord('c'):
+            #        cv2.waitKey(0)
             #import pdb;pdb.set_trace()
             im.set_array(gray)
 
@@ -180,8 +190,17 @@ if __name__ == "__main__":
                 fish_text.set_y(line0y + 5)
         vel_lc.set_segments(lines) ## Lines
         return 0
-
+    def onClick(event):
+        global ani_running
+        if ani_running:
+            ani.pause()
+            ani_running = False
+        else:
+            ani.resume()
+            ani_running = True
     #ani = animation.FuncAnimation(fig, animate, frames = n_frames-first_frame,interval=1000)
+    ani_running = True
+    fig.canvas.mpl_connect('button_press_event',onClick)
     ani = animation.FuncAnimation(fig, animate, frames = 200,interval=1)
     #writervideo = animation.FFMpegWriter(fps=10)
     #ani.save('test_day37.mp4', writer=writervideo)
