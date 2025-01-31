@@ -102,6 +102,22 @@ prior.cov10 <- list(R = list(V = diag(10), nu = 10.002),
 
 ### DATA EXPLORATION GOES HERE
 
+## How do behaviors vary over time? 
+res.cohXtime <- lme(dist_mean ~ ExpDay, random = ~1|Pi, data = good_data)
+summary(res.time)
+
+res.velXtime <- lme(vel_mean ~ ExpDay, random = ~1|Pi, data = good_data)
+summary(res.velXtime)
+
+res.pdistXtime <- lme(pDist_mean ~ ExpDay, random = ~1|Pi, data = good_data)
+summary(res.pdistXtime)
+
+res.pdistCXtime <- lme(pDistC_mean ~ ExpDay, random = ~1|Pi, data = good_data)
+summary(res.pdistCXtime)
+
+res.velCXtime <- lme(velC_mean ~ ExpDay, random = ~1|Pi, data = good_data)
+summary(res.velCXtime)
+
 ## Daily 
 pairs(indv.com[,c("vel_mean", "pDist_mean", "dist_mean", "NearN_mean", "pDistC_mean", "velC_mean", "head_mean", "angleC_mean")])
 
@@ -110,7 +126,7 @@ pairs(hourly.com[,c("vel_mean_", "pDist_mean_", "dist_mean_", "NearN_mean_", "pD
 
 ### PCA
 
-## Important to scale since data ranges are dramatically different
+## Could be important to scale since data ranges are dramatically different
 indv.scaled <- scale(indv.com[,c("vel_mean", "pDist_mean", "dist_mean", "pDistC_mean", "velC_mean", "head_mean", "angleC_mean")],center = TRUE, scale = TRUE)
 indv.scaled$Pi <- indv.com$Pi
 indv.scaled$ExpDay <- indv.com$ExpDay

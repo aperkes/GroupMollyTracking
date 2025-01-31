@@ -141,6 +141,7 @@ prior.cov10 <- list(R = list(V = diag(10), nu = 10.002),
 
 ### Define function to get blups ###
 
+n_days <- 5
 func.ndays.intercepts <- function(depVar,df,n_days) {
   # select only those IDs in that vector & only keep up to obs 70 & make obs 1 = 0
   
@@ -154,36 +155,35 @@ func.ndays.intercepts <- function(depVar,df,n_days) {
   post.w <- list()
   ci.w <- list()
   blup <- list()
+  fixed <- as.formula(paste(depVar,"~ ExpDay",sep=""))
+
+  model.blup <- MCMCglmm(fixed = fixed, 
+                         random = ~us(1 + ExpDay):Pi, 
+                         data = indv.ndays.cen, 
+                         family = "gaussian",
+                         pr = T,
+                         prior = prior.id.slope, 
+                         nitt=310000, burnin = 10000, thin = 200, 
+                         verbose = F)  
+  ## More proper conditional repeatability approach. 
+  sigma.a0 <- model.blup$VCV[,"(Intercept):(Intercept).Pi"]
+  a1_col <- 'ExpDay:ExpDay.Pi'
+  sigma.a1 <- model.blup$VCV[,a1_col]
+  rho_col <- "(Intercept):ExpDay.Pi"
+  
+  rho <- model.blup$VCV[,rho_col] ### this is actually the whole covariance term, not just rho
+  sigma.e <- model.blup$VCV[,"units"]
+  
+  model_name <- paste('col.day',i,sep='')
+  assign(model_name,model.blup)
   
   for (i in seq(0,54,n_days)) {
     
-    col_name <- paste('Day',i,sep='')
-    print(col_name)
-    indv.ndays.cen[[col_name]] <- with(df,ExpDay-i)
-    fixed <- as.formula(paste(depVar,"~ ",col_name,sep=""))
-    random <- as.formula(paste('~us(1 + ',col_name,'):Pi',sep=''))
-    model.blup <- MCMCglmm(fixed = fixed, 
-                           random = random, 
-                           data = indv.ndays.cen, 
-                           family = "gaussian",
-                           pr = T,
-                           prior = prior.id.slope, 
-                           nitt=310000, burnin = 10000, thin = 200, 
-                           verbose = F)  
-    model_name <- paste('col.day',i,sep='')
-    assign(model_name,model.blup)
+
     rpt_name <- paste('rpt',i,sep='')
-    
-    ## More proper conditional repeatability approach. 
-    sigma.a0 <- model.blup$VCV[,"(Intercept):(Intercept).Pi"]
-    a1_col <- paste('Day',i,":Day",i,".Pi",sep='')
-    sigma.a1 <- model.blup$VCV[,a1_col]
-    rho_col <- paste("(Intercept):Day",i,".Pi",sep='')
-    
-    rho <- model.blup$VCV[,rho_col] ### this is actually the whole covariance term, not just rho
-    sigma.e <- model.blup$VCV[,"units"]
-    rpt.n <- ( sigma.a0 + sigma.a1*i + 2*rho*i ) / 
-      ( sigma.a0 + sigma.a1*i + 2*rho*i + sigma.e)
+
+    rpt.n <- ( sigma.a0 + sigma.a1*(i**2) + 2*rho*i ) / 
+      ( sigma.a0 + sigma.a1*(i**2) + 2*rho*i + sigma.e)
     
     #rpt.n <- model.blup$VCV[,"(Intercept):(Intercept).Pi"]/(model.blup$VCV[,"(Intercept):(Intercept).Pi"] + model.blup$VCV[,"units"])
     assign(rpt_name,rpt.n)
@@ -234,8 +234,9 @@ func.ndays.intercepts <- function(depVar,df,n_days) {
   rpt.slice.rpt <- rpt.slice.long[rpt.slice.long$type == 'rpt',]
   
   #n_pis <- length(colnames(col.day0$Sol)) / 2 - 1
+  
   ### This is very dataset specific, you may need to check it: 
-  ids <- colnames(col.day0$Sol)[3:(3 + n_pis - 1)] ## Make sure this matches below
+  ids <- colnames(model.blup$Sol)[3:(3 + n_pis - 1)] ## Make sure this matches below
   ids <- substr(ids, 16, 19)
   
   dates.rep <- rep(dates, each = n_pis)
@@ -342,8 +343,136 @@ func.ndays.intercepts <- function(depVar,df,n_days) {
   plt.day
   return(list(plt.day,plt.repeat,rpt.plot,blup.plot,rpt.slice.wide,pred.rank))
 }
+
+func.ndays.intercepts.het <- function(depVar,df,day_bin) {
+  # select only those IDs in that vector & only keep up to obs 70 & make obs 1 = 0
   
+  max_days <- max(df$ExpDay) ## It's 0 indexed
+  indv.df <- df
+  
+  n_pis <- length(unique(df$Pi))
+  rpt <- list()
+  ci.rpt <- list()
+  
+  post.among <- list()
+  ci.among <- list()
+  post.within <- list()
+  ci.within <- list()
+  
+  #blup <- list()
+  ### Define fixed and random formulas for given dep variable
+  fixed <- as.formula(paste(depVar,"~ ExpDay",sep=""))
+  random <- as.formula(paste('~us(1 + ExpDay):Pi',sep=''))
+  
+  ## Need day as a factor for the rcov line
+  indv.df$ExpDay_factor <- as.factor(indv.df$ExpDay)
+  model.het <- MCMCglmm(fixed = fixed, 
+                        random = random, 
+                        rcov = ~idh(ExpDay_factor):units, ## use this line for het. residual variance
+                        data = indv.df, 
+                        family = "gaussian",
+                        pr = T,
+                        prior = prior.id.slope.cov, ## Replace this with prior.id.slope for homo residual variance
+                        nitt=310000, burnin = 10000, thin = 200, 
+                        verbose = F)  
+  
+  sigma.a0 <- model.het$VCV[,"(Intercept):(Intercept).Pi"]
+  sigma.a1 <- model.het$VCV[,"ExpDay:ExpDay.Pi"]
+  
+  rho <- model.het$VCV[,"(Intercept):ExpDay.Pi"] ### whole covariance term, not just rho
+  
+  ### Calculate conditional rpt at each point x
+  for (x in seq(0,max_days,day_bin)) {
+    ## Grab residual at that day
+    e_col <- paste("ExpDay_factor",x,".units",sep='')
+    sigma.e.x <- model.het$VCV[,e_col]
+    
+    sigma.among.x <- ( sigma.a0 + sigma.a1*(x**2) + 2*rho*x )
+    rpt.x <- sigma.among.x / 
+      ( sigma.among.x + sigma.e.x)
+    
+    rpt <- c(rpt,median(rpt.x))
+    ci.x <- HPDinterval(rpt.x)[1:2]
+    ci.rpt <- c(ci.rpt,ci.x)
+    
+    post.among.x <- median(sigma.among.x) ## 
+    post.among <- c(post.among,post.among.x)
+    
+    ci.among.x <- HPDinterval(sigma.among.x)[1:2]
+    ci.among <- c(ci.among,ci.among.x)
+    
+    post.within.x <- median(sigma.e.x)
+    post.within <- c(post.within,post.within.x)
+    
+    ci.within.x <- HPDinterval(sigma.e.x)[1:2]
+    ci.within <- c(ci.within,ci.within.x)
+    
+    'this pulls out the individual intercepts and adds in the overall intercepts
+    so that way these numbers are absolute values, as opposed to differences from overall'
+
+    #blup <- c(blup,intercepts.n)
+  }
+  intercepts <- unname(median(model.het$Sol)[3:(3+n_pis-1)] + median(model.het$Sol)["(Intercept)"])
+  #blup <- unlist(blup)
+  rpt <- unlist(rpt)
+  dates <- seq(0,54,day_bin) ## 
+  
+  ## Switches back to old syntax here
+  ci.rpt <- matrix(unlist(ci.rpt), nrow = length(dates), byrow = T)
+  ci.id <- matrix(unlist(ci.among), nrow = length(dates), byrow = T)
+  ci.w <- matrix(unlist(ci.within), nrow = length(dates), byrow = T)      
+  post.id <- unlist(post.among)
+  post.w <- unlist(post.within)
+
+  
+  rpt.slice.wide <- data.frame(dates, "rpt" = rpt, "lower.rpt" = ci.rpt[,1], "upper.rpt" = ci.rpt[,2],
+                               "post.id" = post.id, "lower.id" = ci.id[,1], "upper.id" = ci.id[,2], 
+                               "post.w" = post.w, "lower.w" = ci.w[,1], "upper.w" = ci.w[,2])
+  
+  rpt.slice.long <- data.frame("date" = rep(dates, 3), 
+                               "type" = rep(c("rpt", "id", "within"), each = length(dates)),
+                               "variance" = unname(c(rpt, post.id, post.w)),
+                               "lower" = unname(c(ci.rpt[,1], ci.id[,1], ci.w[,1])),
+                               "upper" = unname(c(ci.rpt[,2], ci.id[,2], ci.w[,2])))
+  
+  
+  rpt.slice.rpt <- rpt.slice.long[rpt.slice.long$type == 'rpt',]
+  
+  #n_pis <- length(colnames(col.day0$Sol)) / 2 - 1
+  ### This is very dataset specific, you may need to check it: 
+  ids <- colnames(model.het$Sol)[3:(3 + n_pis - 1)] ## Make sure this matches below
+  ids <- substr(ids, 16, 19)
+  
+  dates.rep <- rep(dates, each = n_pis)
+  picomp <- rep(ids, length(dates))
+  
+  pred.intercepts <- data.frame(dates.rep, picomp, intercepts)
+  
+  plt.repeat <- 0
+  
+  pred.rank <- pred.intercepts %>%
+    filter(dates.rep == 0) %>%
+    mutate(ranking = rank(intercepts)) %>%
+    select(picomp, ranking)
+  
+  pred.rank <- left_join(pred.intercepts, pred.rank) %>%
+    arrange(ranking)
+  plasma_pal <- viridis::plasma(n = 30)
+  plasma_pal <- plasma_pal[1:26]
+  
+  
+  blup.plot <- 0
+  rpt.plot <- 0
+  
+  plt.repeat <- 0
+  plt.day <- 0
+  return(list(plt.day,plt.repeat,rpt.plot,blup.plot,rpt.slice.wide,pred.rank))
+}
+
+## This is great for rpt, but won't give us prediction. 
+hetplots.dist <- func.ndays.intercepts.het('dist_mean',indv.long54,n_days)
 ## These two are in the paper proper 
+
 plots.dist <- func.ndays.intercepts('dist_mean',indv.long54,n_days)
 plots.velC <- func.ndays.intercepts('velC_mean',indv.long54,n_days)
 
@@ -405,6 +534,7 @@ sliding.angleC <- func.slidingMean('angleC_mean',indv.long54,5)
 
 ## rpt.data is calculated as part of intercepts, so you can get it as plots.foo[[5]]
 func.rpt.plot <- function(rpt.data) {
+  dates <- seq(0,54,n_days)
   bar_scale <- max(rpt.data$post.id) + max(rpt.data$post.w)
   #foo <- plots.vel[[5]]
   rpt.data$lower.id_ <- rpt.data$lower.id / bar_scale
@@ -420,12 +550,12 @@ func.rpt.plot <- function(rpt.data) {
     geom_errorbar(aes(ymin = lower.rpt, ymax = upper.rpt, width = 1, color = "#000000")) +
     
     #geom_errorbar(aes(x = dates-0.5, ymin = lower.id_, ymax = upper.id_, width = 1, color = "#000000")) +
-    geom_line(aes(x = dates-0.5, y = post.id_, color = "#959595")) +
-    geom_point(aes(x = dates-0.5, y = post.id_), shape = 21, color = "#000000", fill = "#959595", size = 3) +
+    #geom_line(aes(x = dates-0.5, y = post.id_, color = "#959595")) +
+    #geom_point(aes(x = dates-0.5, y = post.id_), shape = 21, color = "#000000", fill = "#959595", size = 3) +
     
     #geom_errorbar(aes(x = dates+0.5, ymin = lower.w_, ymax = upper.w_, width = 1, color = "#000000")) +
-    geom_line(aes(x = dates+0.5, y = post.w_, color = "#CCCCCC")) +
-    geom_point(aes(x = dates + 0.5, y = post.w_), shape = 21, color = "#000000", fill = "#CCCCCC", size = 3) +
+    #geom_line(aes(x = dates+0.5, y = post.w_, color = "#CCCCCC")) +
+    #geom_point(aes(x = dates + 0.5, y = post.w_), shape = 21, color = "#000000", fill = "#CCCCCC", size = 3) +
     
     scale_x_continuous(breaks = dates, labels = dates) +
     scale_y_continuous(name = "Variance estimate",limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1.0)) +
@@ -461,6 +591,8 @@ rpt.plot.angleC <- func.rpt.plot(plots.angleC[[5]])
 ## First two rows of plots: 
 rpt.plot.dist; sliding.dist[[1]]
 rpt.plot.velC; sliding.velC[[1]]
+
+rpt.plot.dist + geom_ribbon(aes(ymin = rpt.quants[,1], ymax = rpt.quants[,2]), fill = "lightblue", alpha = 0.5)
 
 ## Supplemental plots: 
 rpt.plot.vel; sliding.vel[[1]]

@@ -4,7 +4,7 @@ df <- indv.long54
 n_days = 5
 dates <- seq(0,54,n_days) ## 
 
-func.ndays.predict <- function(depVar,df,n_days) {
+func.ndays.predict.old <- function(depVar,df,n_days) {
   #df <- indv.long54
   df$velC_scale <- df$velC_mean * 100
   
@@ -236,7 +236,7 @@ func.ndays.predict <- function(depVar,df,n_days) {
   #return(list(plt.week.corr, plt.predict.one,behav.bin.id,n_bins,among.corr))
   }
 
-plots.predict.dist <- func.ndays.predict('dist_mean',df,5)
+plots.predict.dist.old <- func.ndays.predict.old('dist_mean',df,5)
 
 plots.predict.dist[[2]]
 plots.predict.dist[[1]]
@@ -577,10 +577,10 @@ rpt.plot.wall_distC; sliding.wall_dist[[1]]
 ##  func.ndays.predict as behav.bin.id. 
 
 #plots.predict.dist <- func.ndays.predict('dist_mean',df,5)
-behav.bin.id <- plots.predict.dist[[3]]
-n_bins <- plots.predict.dist[[4]]
-id.matrix.bin <- plots.predict.dist[[5]]
-ci.bin <- plots.predict.dist[[6]]
+behav.bin.id <- plots.predict.dist.old[[3]]
+n_bins <- plots.predict.dist.old[[4]]
+id.matrix.bin <- plots.predict.dist.old[[5]]
+ci.bin <- plots.predict.dist.old[[6]]
 
 ## Need to have weekly blups
 # n_bins:len(Sol)
@@ -622,10 +622,10 @@ ci.long <- left_join(test.lower, test.upper, by = c("Var1", "Var2")) %>%
 
 ci.long$start.bin <- ci.long$start.bin -1
 ci.long$end.bin <- ci.long$end.bin -1
-among.corr <- left_join(foo, ci.long, by = c("start.bin", "end.bin"))
-among.corr
+among.corr2 <- left_join(foo, ci.long, by = c("start.bin", "end.bin"))
+among.corr2
 
-## Oh. I'm being dumb. I should jsut calculate among.corr in the function
+## Oh. I'm being dumb. I should just calculate among.corr in the function
 
 ## Do the plot
 #ranking <- plots.dist[[6]]$ranking
@@ -650,6 +650,7 @@ j <- 2
 
 plots.list <- vector("list",n_elements)
 n_count <- 0
+
 matrix.fig <- plots.predict.dist[[2]]
 
 

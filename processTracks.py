@@ -319,6 +319,11 @@ def get_stats(track_array,track_polar):
 
     vel_mean = np.nanmean(velocity_array)
     vel_std = np.nanstd(np.nanstd(velocity_array,axis=1))
+
+### get prop active and some metric of upper limits of speed. 
+    prop_active = np.nanmean(velocity_array[~np.isnan(velocity_array)] > 5) 
+    upper_q = np.nanmean(np.nanquantile(velocity_array,0.95,axis=0))
+
     angMomC_mean = np.nanmean(stat_array[3]) ## this is the mean cohesion
     angMomC_std = np.nanstd(stat_array[3])
     velC_mean = np.nanmean(stat_array[2])
@@ -354,7 +359,9 @@ def get_stats(track_array,track_polar):
         'NearN_mean':nn_mean,
         'NearN_std':nn_std,
         'angleC_mean':angleC_mean,
-        'angleC_std':angleC_std
+        'angleC_std':angleC_std,
+        'prop_active':prop_active,
+        'upper_vel':upper_q
     }
     return track_stats,stat_arrays
 
@@ -509,8 +516,8 @@ if __name__ == '__main__':
     long_df = long_df[new_cols_]
 
     if True:
-        csv_df.to_csv('./JolleTracksAll_4.csv',index=False)
-        long_df.to_csv('./JolleTracksHourly_4.csv',index=False)
+        csv_df.to_csv('./JolleTracksAll_5.csv',index=False)
+        long_df.to_csv('./JolleTracksHourly_5.csv',index=False)
 
     if False:
         fig,(ax,ax2,ax3) = plt.subplots(1,3)
