@@ -126,6 +126,12 @@ prior.id <- list(R = list(V = 1, nu = 0.002),
 prior.id.slope <- list(R = list(V = 1, nu = 0.002),
                        G = list(G1=list(V = diag(2), nu = 0.002, alpha.mu = c(0,0),  alpha.V = diag(2)*25^2)))
 
+### Define prior for heterogeneous residual variance
+total_days <- nlevels(as.factor(indv.long54$ExpDay))
+prior.id.slope.cov <- list(R = list(V = diag(total_days),nu = total_days + 0.002),
+                           G = list(G1=list(V = diag(2), nu = 0.002, alpha.mu = c(0,0),  alpha.V = diag(2)*25^2)))
+
+
 prior.cov4 <- list(R = list(V = diag(4), nu = 4.002),
                    G = list(G1=list(V = diag(4), nu = 4.002, alpha.mu = rep(0,4), alpha.V = 1000*diag(4))))
 
