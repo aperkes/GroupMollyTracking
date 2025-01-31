@@ -147,7 +147,7 @@ prior.cov10 <- list(R = list(V = diag(10), nu = 10.002),
 
 ### Define function to get blups ###
 
-n_days <- 5
+n_days <- 1
 func.ndays.intercepts <- function(depVar,df,n_days) {
   # select only those IDs in that vector & only keep up to obs 70 & make obs 1 = 0
   
@@ -180,7 +180,7 @@ func.ndays.intercepts <- function(depVar,df,n_days) {
   rho <- model.blup$VCV[,rho_col] ### this is actually the whole covariance term, not just rho
   sigma.e <- model.blup$VCV[,"units"]
   
-  model_name <- paste('col.day',i,sep='')
+  model_name <- 'col.day0' ## This is just for reverse compatability 
   assign(model_name,model.blup)
   
   for (i in seq(0,54,n_days)) {
@@ -476,19 +476,20 @@ func.ndays.intercepts.het <- function(depVar,df,day_bin) {
 }
 
 ## This is great for rpt, but won't give us prediction. 
-hetplots.dist <- func.ndays.intercepts.het('dist_mean',indv.long54,n_days)
+hetplots.dist <- func.ndays.intercepts.het('dist_mean',indv.long54,1)
 ## These two are in the paper proper 
 
-plots.dist <- func.ndays.intercepts('dist_mean',indv.long54,n_days)
-plots.velC <- func.ndays.intercepts('velC_mean',indv.long54,n_days)
+plots.dist <- hetplots.dist
+plots.dist <- func.ndays.intercepts.het('dist_mean',indv.long54,n_days)
+plots.velC <- func.ndays.intercepts.het('velC_mean',indv.long54,n_days)
 
 ## These Four are supplemental
-plots.vel <- func.ndays.intercepts('vel_mean',indv.long54,n_days)
-plots.wall_dist <- func.ndays.intercepts('pDist_mean',indv.long54,n_days)
+plots.vel <- func.ndays.intercepts.het('vel_mean',indv.long54,n_days)
+plots.wall_dist <- func.ndays.intercepts.het('pDist_mean',indv.long54,n_days)
 #plots.vel_std <- func.ndays.intercepts('vel_std',df,n_days)
 #plots.velC_scale <- func.ndays.intercepts('velC_scale',df,n_days)
-plots.wall_distC <- func.ndays.intercepts('pDistC_mean',indv.long54,n_days)
-plots.angleC <- func.ndays.intercepts('angleC_mean',indv.long54,n_days)
+plots.wall_distC <- func.ndays.intercepts.het('pDistC_mean',indv.long54,n_days)
+plots.angleC <- func.ndays.intercepts.het('angleC_mean',indv.long54,n_days)
 #plots.angle_std <- func.ndays.intercepts('polarity_std',df,n_days)
 
 ### Blups are fancy, but sliding average is much easier to explain:
@@ -584,7 +585,8 @@ func.rpt.plot <- function(rpt.data) {
 ### Calculate Repeatability (these plots are down below)
 
 ## Again first two are for the main body
-rpt.plot.dist <- func.rpt.plot(plots.dist[[5]])
+rpt.plot.dist.old <- func.rpt.plot(plots.dist[[5]])
+rpt.plot.dist <- func.rpt.plot(hetplots.dist[[5]])
 rpt.plot.velC <- func.rpt.plot(plots.velC[[5]])
 
 rpt.plot.vel <- func.rpt.plot(plots.vel[[5]])
