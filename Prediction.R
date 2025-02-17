@@ -4,8 +4,11 @@ df <- indv.long54
 n_days = 5
 dates <- seq(0,54,n_days) ## 
 
+df <- indv.long54
+depVar <- "dist_mean"
+
 func.ndays.predict.old <- function(depVar,df,n_days) {
-  #df <- indv.long54
+
   df$velC_scale <- df$velC_mean * 100
   
   df
@@ -236,10 +239,10 @@ func.ndays.predict.old <- function(depVar,df,n_days) {
   #return(list(plt.week.corr, plt.predict.one,behav.bin.id,n_bins,among.corr))
   }
 
-plots.predict.dist.old <- func.ndays.predict.old('dist_mean',df,5)
+plots.predict.dist.old <- func.ndays.predict.old('dist_mean',indv.long54,5)
 
-plots.predict.dist[[2]]
-plots.predict.dist[[1]]
+plots.predict.dist.old[[2]]
+plots.predict.dist.old[[1]]
 
 ggsave("./figs/slidingPredict.jpg",plots.predict.dist[[2]])
 ggsave("./figs/slidingPredict.svg",plots.predict.dist[[2]])

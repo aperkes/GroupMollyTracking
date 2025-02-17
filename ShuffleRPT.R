@@ -63,6 +63,7 @@ total_days <- nlevels(as.factor(indv.long54$ExpDay))
 prior.id.slope.cov <- list(R = list(V = diag(total_days),nu = total_days + 0.002),
                        G = list(G1=list(V = diag(2), nu = 0.002, alpha.mu = c(0,0),  alpha.V = diag(2)*25^2)))
 
+### We also need to have specified priors for each one, see other one
 
 #### Function to calculate conditional repeatabilty, using het residual variance ####
 func.rpt <- function(df,depVar='dist_mean',day_bin=1) {
@@ -146,12 +147,12 @@ func.shuffle.df <- function(df) {
 ### Simplified function to just get repeatability, to be run in parallel
 
 ### Simplified function for shuffling and calculating rpt. 
-func.shuffled.rpt.i <- function(i) {
+func.shuffled.rpt.i <- function(i,depVar="dist_mean",day_bin=1,prior.cov=prior.id.slope.coh) {
   # select only those IDs in that vector & only keep up to obs 70 & make obs 1 = 0
   set.seed(i)
   df.shuffled <- func.shuffle.df(indv.long54)
-  depVar <- "dist_mean"
-  day_bin <- 1
+  #depVar <- "dist_mean"
+  #day_bin <- 1
   max_days <- 54
   
   n_pis <- length(unique(df.shuffled$Pi))
@@ -175,7 +176,7 @@ func.shuffled.rpt.i <- function(i) {
                          data = df.shuffled, 
                          family = "gaussian",
                          pr = T,
-                         prior = prior.id.slope.cov,
+                         prior = prior.cov,
                          nitt=310000, burnin = 10000, thin = 200, 
                          verbose = F)  
   
@@ -217,4 +218,146 @@ rpt.all <- mclapply(1:50,func.shuffled.rpt.i,mc.cores=5L)
 rpt.mat.all <- do.call("cbind",rpt.all)
 rpt.quants <- rowQuantiles(rpt.mat.all,probs=c(.025,.975))
 
+rpt.coh <- mclapply(1:50,func.shuffled.rpt.i,depVar='dist_mean',prior.cov=prior.id.slope.coh,mc.cores=5L)
+rpt.mat.coh <- do.call("cbind",rpt.coh)
+rpt.quants.coh <- rowQuantiles(rpt.mat.coh,probs=c(.025,.975))
 
+rpt.vel <- mclapply(1:50,func.shuffled.rpt.i,depVar='vel_mean',prior.cov=prior.id.slope.vel,mc.cores=5L)
+rpt.mat.vel <- do.call("cbind",rpt.vel)
+rpt.quants.vel <- rowQuantiles(rpt.mat.vel,probs=c(.025,.975))
+
+rpt.velC <- mclapply(1:50,func.shuffled.rpt.i,depVar='velC_mean',prior.cov=prior.id.slope.velC,mc.cores=5L)
+rpt.mat.velC <- do.call("cbind",rpt.velC)
+rpt.quants.velC <- rowQuantiles(rpt.mat.velC,probs=c(.025,.975))
+
+rpt.pdist <- mclapply(1:50,func.shuffled.rpt.i,depVar='pDist_mean',prior.cov=prior.id.slope.pDist,mc.cores=5L)
+rpt.mat.pdist <- do.call("cbind",rpt.pdist)
+rpt.quants.pdist <- rowQuantiles(rpt.mat.pdist,probs=c(.025,.975))
+
+rpt.pdistC <- mclapply(1:50,func.shuffled.rpt.i,depVar='pDistC_mean',prior.cov=prior.id.slope.pDistC,mc.cores=5L)
+rpt.mat.pdistC <- do.call("cbind",rpt.pdistC)
+rpt.quants.pdistC <- rowQuantiles(rpt.mat.pdistC,probs=c(.025,.975))
+
+rpt.angleC <- mclapply(1:50,func.shuffled.rpt.i,depVar='angleC_mean',prior.cov=prior.id.slope.angleC,mc.cores=5L)
+rpt.mat.angleC <- do.call("cbind",rpt.angleC)
+rpt.quants.angleC <- rowQuantiles(rpt.mat.angleC,probs=c(.025,.975))
+
+
+### Dumping ground for all sorts o fold code: 
+
+res.cohScale <- lme(dist_meanScale ~ ExpDay, random = ~ExpDay|Pi, data = good_data)
+res.velCScale <- lme(velC_meanScale ~ ExpDay, random = ~ExpDay|Pi, data = good_data)
+res.velScale <- lme(vel_meanScale ~ ExpDay, random = ~ExpDay|Pi, data = good_data)
+res.pDistScale <- lme(pDist_meanScale ~ ExpDay, random = ~ExpDay|Pi, data = good_data)
+res.pDistCScale <- lme(pDistC_meanScale ~ ExpDay, random = ~ExpDay|Pi, data = good_data)
+res.angleCScale <- lme(angleC_meanScale ~ ExpDay, random = ~ExpDay|Pi, data = good_data)
+
+
+###
+func.build_prior <- function(res.slopeInt,total_days = 55) {
+  
+  res.resid <- as.double(VarCorr(res.slopeInt)["Residual","Variance"])
+  res.corr <- as.double(VarCorr(res.slopeInt)["ExpDay",'Corr'])
+  res.slope <- as.double(VarCorr(res.slopeInt)["ExpDay",'Variance'])
+  res.int <- as.double(VarCorr(res.slopeInt)["(Intercept)",'Variance'])
+  res.matrix <- matrix(c(res.int,0,0,res.slope),nrow=2,ncol=2,byrow=TRUE)
+  
+  prior <- list(R = list(V = diag(total_days)*res.resid,nu = total_days + 0.002),
+                G = list(G1=list(V = diag(2), nu = 0.002, alpha.mu = c(res.int,res.slope),  alpha.V = diag(2)*25^2)))
+  print(res.resid)
+  print(res.matrix)
+  return(prior)
+}
+
+prior.coh <- func.build_prior(res.cohXtime)
+prior.velC <- func.build_prior(res.velCXtime)
+prior.vel <- func.build_prior(res.velXtime)
+prior.pDist <- func.build_prior(res.pDistXtime)
+prior.pDistC <- func.build_prior(res.pDistCXtime)
+prior.angleC <- func.build_prior(res.angleCXtime)
+
+
+### Scaled Priors
+prior.cohScale <- func.build_prior(res.cohScale)
+prior.velCScale <- func.build_prior(res.velCScale)
+prior.velScale <- func.build_prior(res.velScale)
+prior.pDistScale <- func.build_prior(res.pDistScale)
+prior.pDistCScale <- func.build_prior(res.pDistCScale)
+prior.angleCScale <- func.build_prior(res.angleCScale)
+
+
+prior.null <- list(R = list(V = 1, nu = 0.002))
+
+prior.id <- list(R = list(V = 1, nu = 0.002),
+                 G = list(G1=list(V = 1, nu = 0.002, alpha.mu = 0, alpha.V = 25^2)))
+
+prior.id.slope.cov2 <- list(R = list(V = diag(total_days),nu = total_days + 0.002),
+                            G = list(G1=list(V = diag(2), nu = 2.002, alpha.mu = c(0,0),  alpha.V = diag(2)*25^2)))
+
+prior.id.slope.cov1 <- list(R = list(V = diag(total_days),nu = total_days + 0.002),
+                            G = list(G1=list(V = diag(2), nu = 1.002, alpha.mu = c(0,0),  alpha.V = diag(2)*25^2)))
+
+
+prior.good <- list(R = list(V = diag(total_days),nu = total_days + 0.002),
+                   G = list(G1=list(V = diag(2), nu = 0.002, alpha.mu = c(0.5,0.5),  alpha.V = diag(2)*25^2)))
+
+prior.better <- list(R = list(V = diag(total_days),nu = total_days + 0.002),
+                     G = list(G1=list(V = diag(2)*0.5, nu = 0.002, alpha.mu = c(0,0),  alpha.V = diag(2)*25^2)))
+
+
+
+plots.coh2.scaled.prior <- func.ndays.intercepts.het('dist_meanScale',indv.long54,n_days,prior.cov = prior.id.slope.cov2)
+rpt.plot.coh2.scaled <- func.rpt.plot(plots.coh2.scaled.prior[[5]])
+rpt.plot.coh2.scaled
+
+plots.coh1.scaled.prior <- func.ndays.intercepts.het('dist_meanScale',indv.long54,n_days,prior.cov = prior.id.slope.cov1)
+rpt.plot.coh1.scaled <- func.rpt.plot(plots.coh1.scaled.prior[[5]])
+rpt.plot.coh1.scaled
+
+plots.coh0.scaled.prior <- func.ndays.intercepts.het('dist_meanScale',indv.long54,n_days,prior.cov = prior.id.slope.cov)
+rpt.plot.coh0.scaled <- func.rpt.plot(plots.coh0.scaled.prior[[5]])
+rpt.plot.coh0.scaled
+
+## Using the good prior
+plots.coh0.scaled.good <- func.ndays.intercepts.het('dist_meanScale',indv.long54,n_days,prior.cov = prior.good)
+rpt.plot.good <- func.rpt.plot(plots.coh0.scaled.good[[5]])
+rpt.plot.good
+
+plots.zeros <- func.ndays.intercepts.het('dist_meanScale',indv.long54,n_days,prior.cov = prior.zeros)
+rpt.zeros <- func.rpt.plot(plots.zeros[[5]])
+rpt.zeros
+
+plots.better <- func.ndays.intercepts.het('dist_meanScale',indv.long54,n_days,prior.cov = prior.better)
+rpt.better <- func.rpt.plot(plots.better[[5]])
+rpt.better
+
+plots.best <- func.ndays.intercepts.het('dist_meanScale',indv.long54,n_days,prior.cov = prior.best)
+rpt.best <- func.rpt.plot(plots.best[[5]])
+rpt.best
+
+plots.cohWI.prior <- func.ndays.intercepts.het('dist_mean',indv.long54,n_days,prior.cov = prior.coh)
+rpt.plot.cohWI <- func.rpt.plot(plots.cohWI.prior[[5]])
+rpt.plot.cohWI
+
+plots.cohWI.scaled.prior <- func.ndays.intercepts.het('dist_meanScale',indv.long54,n_days,prior.cov = prior.cohScale)
+rpt.plot.cohWI.scaled <- func.rpt.plot(plots.cohWI.scaled.prior[[5]])
+rpt.plot.cohWI.scaled
+
+plots.cohWI.priorPE <- func.ndays.intercepts.het('dist_mean',indv.long54,n_days,prior.cov = prior.coh)
+rpt.plot.cohWIPE <- func.rpt.plot(plots.cohWI.priorPE[[5]])
+rpt.plot.cohWIPE
+
+plots.cohWI.scaled.priorPE <- func.ndays.intercepts.het('dist_meanScale',indv.long54,n_days,prior.cov = prior.cohScale)
+rpt.plot.cohWIPE.scaled <- func.rpt.plot(plots.cohWI.scaled.priorPE[[5]])
+rpt.plot.cohWIPE.scaled
+
+plots.velC.scaled <- func.ndays.intercepts.het('velC_meanScale',indv.long54,n_days)
+plots.velC.scaled.prior <- func.ndays.intercepts.het('velC_meanScale',indv.long54,n_days,prior.cov = prior.velCScale)
+
+
+sliding.velC.scaled <- func.slidingMean('velC_meanScale',indv.long54,5)
+rpt.plot.velC.scaled <- func.rpt.plot(plots.velC.scaled[[5]])
+rpt.plot.velC.scaled.prior <- func.rpt.plot(plots.velC.scaled.prior[[5]])
+
+rpt.plot.velC.scaled; sliding.velC.scaled[[1]]
+rpt.plot.velC; rpt.plot.velC.scaled.prior; rpt.plot.velC.scaled
