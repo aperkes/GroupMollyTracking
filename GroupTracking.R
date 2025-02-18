@@ -17,6 +17,7 @@ library(egg)
 library(patchwork)
 library(viridis)
 library(formatR)
+library(matrixStats)
 
 setwd("~/Documents/Scripts/GroupMollyTracking/")
 
@@ -131,8 +132,6 @@ summary(res.angleCXtime)
 #angleC.resid <- as.double(VarCorr(res.angleCXtime)["Residual","Variance"])
 
 
-prior.best <- list(R = list(V = diag(total_days)*0.5,nu = total_days + 0.002),
-                     G = list(G1=list(V = diag(2)*0.5, nu = 2.002, alpha.mu = c(0,0),  alpha.V = diag(2)*25^2)))
 
 ### Plotting group blups over time
 
@@ -154,6 +153,8 @@ total_days <- nlevels(as.factor(indv.long54$ExpDay))
 prior.id.slope.cov <- list(R = list(V = diag(total_days),nu = total_days + 0.002),
                            G = list(G1=list(V = diag(2), nu = 0.002, alpha.mu = c(0,0),  alpha.V = diag(2)*25^2)))
 
+prior.best <- list(R = list(V = diag(total_days)*0.5,nu = total_days + 0.002),
+                   G = list(G1=list(V = diag(2)*0.5, nu = 2.002, alpha.mu = c(0,0),  alpha.V = diag(2)*25^2)))
 
 ### Define function to get repeatability ####
 
@@ -485,13 +486,10 @@ func.ndays.intercepts.het <- function(depVar,df,day_bin=1,prior.cov = prior.id.s
   return(list(plt.day,plt.repeat,rpt.plot,blup.plot,rpt.slice.wide,pred.rank,model.het))
 }
 
-n_days = 1
-
 ### Get repeatability values ####
 
 ## These two are in the paper proper 
 
-n_days=1
 plots.dist <- func.ndays.intercepts.het('dist_meanScale',indv.long54,n_days,prior.cov=prior.best)
 plots.velC <- func.ndays.intercepts.het('velC_meanScale',indv.long54,n_days,prior.cov=prior.best)
 
@@ -1025,7 +1023,7 @@ func.ndays.predict.old <- function(depVar,df,n_days) {
           plot.title = element_text(hjust = 0.5, size = 14)) 
   plt.onestep
   #return(list(plt.week.corr, plt.predict.one,behav.bin.id,n_bins,id.matrix.bin,ci.bin))
-  return(list(plt.week.corr, plt.predict.one,behav.bin.id,n_bins,among.corr))
+  return(list(plt.week.corr, plt.predict.one,behav.bin.id,n_bins,among.corr,df.wide))
 }
 
 
@@ -1081,7 +1079,7 @@ func.ndays.predict <- function(depVar,df,n_days=5) {
   
   prior.b <- list(R = list(V = diag(n_bins), nu = n_bins + .002),
                   G = list(G1=list(V = diag(n_bins), nu = n_bins + .002, alpha.mu = rep(0,n_bins), alpha.V = 1000*diag(n_bins))))
-  
+
   print(form.bins)
   print(df.wide)
   behav.bin.id <- MCMCglmm(form.bins, 
@@ -1264,7 +1262,7 @@ func.ndays.predict <- function(depVar,df,n_days=5) {
           plot.title = element_text(hjust = 0.5, size = 14)) 
   plt.onestep
   #return(list(plt.week.corr, plt.predict.one,behav.bin.id,n_bins,id.matrix.bin,ci.bin))
-  return(list(plt.week.corr, plt.predict.one,behav.bin.id,n_bins,among.corr))
+  return(list(plt.week.corr, plt.predict.one,behav.bin.id,n_bins,among.corr,df.wide))
 }
 
 plots.predict.dist <- func.ndays.predict('dist_meanScale',indv.long54,5)
@@ -1391,6 +1389,8 @@ ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.vel.svg'
 
 megafig.velC <- func.megafig(plots.predict.velC)
 megafig.velC.old <- func.megafig(plots.predict.velC.old)
+
+
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.velC.jpg',megafig.vel,width = 6.5,height=6.5,units="in")
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.velC.svg',megafig.vel,width = 6.5,height=6.5,units="in")
 
