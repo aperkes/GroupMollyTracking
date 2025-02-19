@@ -1027,7 +1027,7 @@ func.ndays.predict.old <- function(depVar,df,n_days) {
 }
 
 
-func.ndays.predict <- function(depVar,df,n_days=5,k=1) {
+func.ndays.predict <- function(depVar,df,n_days=5) {
   #df <- indv.long54
   #df$velC_scale <- df$velC_mean * 100
   
@@ -1083,14 +1083,13 @@ func.ndays.predict <- function(depVar,df,n_days=5,k=1) {
 
   print(form.bins)
   print(bins.list)
-  scaled_names <- paste(bin_names,"Scale",sep='.')
-  for (b in bin_names) {
+
+  for (b in bins.list) {
     #col_name <- paste(b,"Scale",sep=".")
-    df.wide[,b] <- scale(df.wide[,b]) * k
+    df.wide[,b] <- scale(df.wide[,b])
+
   }
-  #bins.str.scaled <- paste(scaled_names,collapse=',')
-  #form.bins <- as.formula(paste("cbind(",bins.str.scaled,") ~ trait - 1",sep=""))
-  
+
   print(form.bins)
   behav.bin.id <- MCMCglmm(form.bins, 
                            random = ~us(trait):Pi,
@@ -1274,33 +1273,38 @@ func.ndays.predict <- function(depVar,df,n_days=5,k=1) {
   #return(list(plt.week.corr, plt.predict.one,behav.bin.id,n_bins,id.matrix.bin,ci.bin))
   return(list(plt.week.corr, plt.predict.one,behav.bin.id,n_bins,among.corr,df.wide))
 }
-plots.predict.dist.1 <- func.ndays.predict('dist_mean',indv.long54,5,1)
-plots.predict.dist.100 <- func.ndays.predict('dist_mean',indv.long54,5,100)
-plots.predict.dist.1000 <- func.ndays.predict('dist_mean',indv.long54,5,1000)
 
-plots.predict.dist <- func.ndays.predict('dist_meanScale',indv.long54,5)
-plots.predict.dist.old <- func.ndays.predict('dist_mean',indv.long54,5)
 
-foo <- plots.predict.dist.old[[6]]
-bin_names <- c("bin0","bin1","bin2","bin3","bin4","bin5","bin6","bin7","bin8","bin9","bin10")
-scaled_names <- paste(bin_names,"Scale",sep='.')
-for (b in bin_names) {
-  col_name <- paste(b,"Scale",sep=".")
-  foo[,col_name] <- scale(foo[,b])
+plots.predict.dist <- func.ndays.predict('dist_mean',indv.long54,5)
+
+
+### Binwise correlation
+# There is some weirdness in scaling with MCMCglmm
+# As a sanity check, we ran this with standard regression, 
+# and the values correlate closely. 
+
+bin_names <- colnames(plots.predict.dist[[6]])[3:13]
+among.corr.d <- plots.predict.dist[[5]]
+
+for (r in seq(dim(among.corr.d)[1])) { 
+  #print(among.corr.100[r,1:2])
+  bar <- as.formula(paste(among.corr.d[r,1],'~',among.corr.d[r,2]))
+
+  res.bar <- lme(bar,random=~1|obs.day,data=foo)
+  simp.corr <- res.bar$coefficients$fixed[2]
+  among.corr.d[r,'lme.corr'] <- simp.corr
 }
-  
+cor(among.corr.d$value,among.corr.d$lme.corr)
 
-plots.predict.velC <- func.ndays.predict('velC_meanScale',indv.long54,5)
-plots.predict.velC.old <- func.ndays.predict('velC_mean',indv.long54,5)
-
-nplots.predict.vel <- func.ndays.predict('vel_meanScale',indv.long54,5)
+plots.predict.velC <- func.ndays.predict('velC_mean',indv.long54,5)
+plots.predict.vel <- func.ndays.predict('vel_mean',indv.long54,5)
 
 plots.predict.wall_dist <- func.ndays.predict('pDist_meanScale',indv.long54,5)
 plots.predict.wall_distC <- func.ndays.predict('pDistC_meanScale',indv.long54,5)
 plots.predict.angleC <- func.ndays.predict('angleC_meanScale',indv.long54,5)
 
 #plots.predict.dist.new[[2]]; plots.predict.dist.new[[1]]
-plots.predict.angleC[[2]]; plots.predict.angleC[[1]]
+#plots.predict.angleC[[2]]; plots.predict.angleC[[1]]
 ### Building the whole matrix fig is quite complicated
 
 ### Define function to plot massive correlation plot
@@ -1397,10 +1401,10 @@ func.megafig <- function(plots.predict) {
 }
 
 ### Main fgure
-megafig.dist.old <- func.megafig(plots.predict.dist.old)
+
 megafig.dist <- func.megafig(plots.predict.dist)
 megafig.dist
-megafig.dist.old
+
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plot.F3.megafig.dist.jpg',megafig.dist,width = 6.5,height=6.5,units="in")
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plot.F3.megafig.dist.svg',megafig.dist,width = 6.5,height=6.5,units="in")
 
@@ -1411,11 +1415,8 @@ ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.vel.jpg'
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.vel.svg',megafig.vel,width = 6.5,height=6.5,units="in")
 
 megafig.velC <- func.megafig(plots.predict.velC)
-megafig.velC.old <- func.megafig(plots.predict.velC.old)
 
 megafig.velC
-megafig.velC.old
-=======
 
 
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.velC.jpg',megafig.vel,width = 6.5,height=6.5,units="in")
