@@ -1029,7 +1029,7 @@ func.ndays.predict.old <- function(depVar,df,n_days) {
 }
 
 
-func.ndays.predict <- function(depVar,df,n_days=5) {
+func.ndays.predict <- function(depVar,df,n_days=5,k=1) {
   #df <- indv.long54
   #df$velC_scale <- df$velC_mean * 100
   
@@ -1075,6 +1075,7 @@ func.ndays.predict <- function(depVar,df,n_days=5) {
   
   bins.list <- (names(df.clean))[3:length(names(df.clean))]
   bins.str <- paste(bins.list,collapse = ',')
+  
   form.bins <- as.formula(paste("cbind(",bins.str,") ~ trait - 1",sep=""))
   print(bins.list)
   n_bins <- length(bins.list)
@@ -1083,10 +1084,19 @@ func.ndays.predict <- function(depVar,df,n_days=5) {
                   G = list(G1=list(V = diag(n_bins), nu = n_bins + .002, alpha.mu = rep(0,n_bins), alpha.V = 1000*diag(n_bins))))
   
   print(form.bins)
-  print(df.wide)
+  print(bins.list)
+  scaled_names <- paste(bin_names,"Scale",sep='.')
+  for (b in bin_names) {
+    #col_name <- paste(b,"Scale",sep=".")
+    df.wide[,b] <- scale(df.wide[,b]) * k
+  }
+  #bins.str.scaled <- paste(scaled_names,collapse=',')
+  #form.bins <- as.formula(paste("cbind(",bins.str.scaled,") ~ trait - 1",sep=""))
+  
+  print(form.bins)
   behav.bin.id <- MCMCglmm(form.bins, 
                            random = ~us(trait):Pi,
-                           rcov = ~us(trait):units,
+                           rcov = ~idh(trait):units,
                            family = c(rep("gaussian", n_bins)), 
                            prior = prior.b, 
                            pr = T, 
@@ -1264,11 +1274,24 @@ func.ndays.predict <- function(depVar,df,n_days=5) {
           plot.title = element_text(hjust = 0.5, size = 14)) 
   plt.onestep
   #return(list(plt.week.corr, plt.predict.one,behav.bin.id,n_bins,id.matrix.bin,ci.bin))
-  return(list(plt.week.corr, plt.predict.one,behav.bin.id,n_bins,among.corr))
+  return(list(plt.week.corr, plt.predict.one,behav.bin.id,n_bins,among.corr,df.wide))
 }
+plots.predict.dist.1 <- func.ndays.predict('dist_mean',indv.long54,5,1)
+plots.predict.dist.100 <- func.ndays.predict('dist_mean',indv.long54,5,100)
+plots.predict.dist.1000 <- func.ndays.predict('dist_mean',indv.long54,5,1000)
 
 plots.predict.dist <- func.ndays.predict('dist_meanScale',indv.long54,5)
 plots.predict.dist.old <- func.ndays.predict('dist_mean',indv.long54,5)
+
+foo <- plots.predict.dist.old[[6]]
+bin_names <- c("bin0","bin1","bin2","bin3","bin4","bin5","bin6","bin7","bin8","bin9","bin10")
+scaled_names <- paste(bin_names,"Scale",sep='.')
+for (b in bin_names) {
+  col_name <- paste(b,"Scale",sep=".")
+  foo[,col_name] <- scale(foo[,b])
+}
+  
+
 plots.predict.velC <- func.ndays.predict('velC_meanScale',indv.long54,5)
 plots.predict.velC.old <- func.ndays.predict('velC_mean',indv.long54,5)
 
@@ -1391,6 +1414,8 @@ ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.vel.svg'
 
 megafig.velC <- func.megafig(plots.predict.velC)
 megafig.velC.old <- func.megafig(plots.predict.velC.old)
+megafig.velC
+megafig.velC.old
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.velC.jpg',megafig.vel,width = 6.5,height=6.5,units="in")
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.velC.svg',megafig.vel,width = 6.5,height=6.5,units="in")
 
