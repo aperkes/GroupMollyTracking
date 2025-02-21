@@ -132,7 +132,6 @@ summary(res.angleCXtime)
 #angleC.resid <- as.double(VarCorr(res.angleCXtime)["Residual","Variance"])
 
 
-
 ### Plotting group blups over time
 
 # Need to build long df
@@ -159,209 +158,8 @@ prior.best <- list(R = list(V = diag(total_days)*0.5,nu = total_days + 0.002),
 ### Define function to get repeatability ####
 
 n_days <- 1
-func.ndays.intercepts <- function(depVar,df,n_days) {
-  # select only those IDs in that vector & only keep up to obs 70 & make obs 1 = 0
-  
-  indv.ndays.cen <- df
-  
-  n_pis <- length(unique(df$Pi))
-  rpt <- list()
-  ci.rpt <- list()
-  post.id <- list()
-  ci.id <- list()
-  post.w <- list()
-  ci.w <- list()
-  blup <- list()
-  fixed <- as.formula(paste(depVar,"~ ExpDay",sep=""))
 
-  model.blup <- MCMCglmm(fixed = fixed, 
-                         random = ~us(1 + ExpDay):Pi, 
-                         data = indv.ndays.cen, 
-                         family = "gaussian",
-                         pr = T,
-                         prior = prior.id.slope, 
-                         nitt=310000, burnin = 10000, thin = 200, 
-                         verbose = F)  
-  ## More proper conditional repeatability approach. 
-  sigma.a0 <- model.blup$VCV[,"(Intercept):(Intercept).Pi"]
-  a1_col <- 'ExpDay:ExpDay.Pi'
-  sigma.a1 <- model.blup$VCV[,a1_col]
-  rho_col <- "(Intercept):ExpDay.Pi"
-  
-  rho <- model.blup$VCV[,rho_col] ### this is actually the whole covariance term, not just rho
-  sigma.e <- model.blup$VCV[,"units"]
-  
-  model_name <- 'col.day0' ## This is just for reverse compatability 
-  assign(model_name,model.blup)
-  
-  for (i in seq(0,54,n_days)) {
-    
-
-    rpt_name <- paste('rpt',i,sep='')
-
-    rpt.n <- ( sigma.a0 + sigma.a1*(i**2) + 2*rho*i ) / 
-      ( sigma.a0 + sigma.a1*(i**2) + 2*rho*i + sigma.e)
-    
-    #rpt.n <- model.blup$VCV[,"(Intercept):(Intercept).Pi"]/(model.blup$VCV[,"(Intercept):(Intercept).Pi"] + model.blup$VCV[,"units"])
-    assign(rpt_name,rpt.n)
-    rpt <- c(rpt,median(rpt.n))
-    ci.n <- HPDinterval(rpt.n)[1:2]
-    ci.rpt <- c(ci.rpt,ci.n)
-    
-    post.n <- median(model.blup$VCV[,"(Intercept):(Intercept).Pi"])
-    post.id <- c(post.id,post.n)
-    
-    ci.id.n <- HPDinterval(model.blup$VCV[,"(Intercept):(Intercept).Pi"])[1:2]
-    ci.id <- c(ci.id,ci.id.n)
-    
-    post.u <- median(model.blup$VCV[,"units"])
-    post.w <- c(post.w,post.u)
-    
-    ci.w.u <- HPDinterval(model.blup$VCV[,"units"])[1:2]
-    ci.w <- c(ci.w,ci.w.u)
-    
-    'this pulls out the individual intercepts and adds in the overall intercepts
-    so that way these numbers are absolute values, as opposed to differences from overall'
-    intercepts.n <- unname(median(model.blup$Sol)[3:(3+n_pis-1)] + median(model.blup$Sol)["(Intercept)"])
-    blup <- c(blup,intercepts.n)
-  }
-  blup <- unlist(blup)
-  rpt <- unlist(rpt)
-  dates <- seq(0,54,n_days) ## 
-  ci.rpt <- matrix(unlist(ci.rpt), nrow = length(dates), byrow = T)
-  ci.id <-matrix(unlist(ci.id), nrow = length(dates), byrow = T)
-  ci.w <- matrix(unlist(ci.w), nrow = length(dates), byrow = T)      
-  post.id <- unlist(post.id)
-  post.w <- unlist(post.w)
-  #plot(post.id ~ date)
-  #plot(post.w ~ date)
-  #plot(rpt ~ date)
-  
-  rpt.slice.wide <- data.frame(dates, "rpt" = rpt, "lower.rpt" = ci.rpt[,1], "upper.rpt" = ci.rpt[,2],
-                               "post.id" = post.id, "lower.id" = ci.id[,1], "upper.id" = ci.id[,2], 
-                               "post.w" = post.w, "lower.w" = ci.w[,1], "upper.w" = ci.w[,2])
-  
-  rpt.slice.long <- data.frame("date" = rep(dates, 3), 
-                               "type" = rep(c("rpt", "id", "within"), each = length(dates)),
-                               "variance" = unname(c(rpt, post.id, post.w)),
-                               "lower" = unname(c(ci.rpt[,1], ci.id[,1], ci.w[,1])),
-                               "upper" = unname(c(ci.rpt[,2], ci.id[,2], ci.w[,2])))
-  
-  
-  rpt.slice.rpt <- rpt.slice.long[rpt.slice.long$type == 'rpt',]
-  
-  #n_pis <- length(colnames(col.day0$Sol)) / 2 - 1
-  
-  ### This is very dataset specific, you may need to check it: 
-  ids <- colnames(model.blup$Sol)[3:(3 + n_pis - 1)] ## Make sure this matches below
-  ids <- substr(ids, 16, 19)
-  
-  dates.rep <- rep(dates, each = n_pis)
-  picomp <- rep(ids, length(dates))
-  
-  pred.intercepts <- data.frame(dates.rep, picomp, blup)
-  
-  plt.repeat <- ggplot(rpt.slice.rpt,aes(x=dates,y=variance)) + 
-    geom_point(shape=1) + 
-    #geom_line() +
-    geom_errorbar(aes(ymin=lower,ymax=upper)) + 
-    ggtitle(depVar) +
-    #ylim(0,1) + 
-    ylab('Repeatability') + 
-    xlab('Days since birth') + 
-    theme_classic() + 
-    theme(legend.position = "none",
-          rect=element_rect(fill="transparent"),
-          panel.background=element_rect(fill="transparent"),
-          axis.line = element_line(linewidth = 0.5, colour = "black"),
-          axis.ticks = element_line(colour = "black"),
-          axis.text = element_text(size = 12, colour = "black"),
-          axis.title = element_text(size = 14, face = "bold", colour = "black"),
-          plot.title = element_text(hjust = 0.5, size = 14)) 
-  ylims <- c(0,1)
-  if (depVar == 'dist_mean') {
-    ylims <- c(0,500)
-  }
-  
-  pred.rank <- pred.intercepts %>%
-    filter(dates.rep == 0) %>%
-    mutate(ranking = rank(blup)) %>%
-    select(picomp, ranking)
-  
-  pred.rank <- left_join(pred.intercepts, pred.rank) %>%
-    arrange(ranking)
-  plasma_pal <- viridis::plasma(n = 30)
-  plasma_pal <- plasma_pal[1:26]
-  
-  blup.plot <- ggplot(pred.rank, aes(x = dates.rep, y = blup, group = picomp)) +
-    geom_line(size = 0.8, aes(color = factor(ranking))) + 
-    xlab("") +
-    scale_y_continuous(name = "Predicted swimming speed (cm/s)") +
-    ylab("Predicted swimming speed") +
-    scale_x_continuous(breaks = dates) +
-    scale_color_manual(values = plasma_pal) +
-    theme_classic() +
-    theme(axis.text.x = element_blank(),
-          axis.title.x = element_blank(),
-          axis.text.y = element_text(size = 8),
-          axis.title.y = element_text(size = 10),
-          legend.position = "none") +
-    annotate("text", x = -1, y = 2.0, label = "A", size = 5)
-  
-  blup.plot
-  rpt.plot <- ggplot(rpt.slice.wide, aes(x = dates)) +
-    geom_point(aes(y = rpt, color = "#000000"), size = 3) +
-    geom_line(aes(x=dates, y = rpt, color = "#000000")) +
-    geom_errorbar(aes(ymin = lower.rpt, ymax = upper.rpt, width = 1, color = "#000000")) +
-    
-    geom_errorbar(aes(x = dates-0.5, ymin = lower.id, ymax = upper.id, width = 1, color = "#000000")) +
-    geom_line(aes(x = dates-0.5, y = post.id, color = "#959595")) +
-    geom_point(aes(x = dates-0.5, y = post.id), shape = 21, color = "#000000", fill = "#959595", size = 3) +
-    
-    geom_errorbar(aes(x = dates+0.5, ymin = lower.w, ymax = upper.w, width = 1, color = "#000000")) +
-    geom_line(aes(x = dates+0.5, y = post.w, color = "#CCCCCC")) +
-    geom_point(aes(x = dates + 0.5, y = post.w), shape = 21, color = "#000000", fill = "#CCCCCC", size = 3) +
-    
-    scale_x_continuous(breaks = dates, labels = dates) +
-    scale_y_continuous(name = "Variance estimate") + #, limits = c(0, 2.5), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1.0)) +
-    labs(x = "Day",
-         color = "Legend") +
-    scale_color_manual(name = "", 
-                       values =c("#000000",  "#959595",  "#CCCCCC"),
-                       labels = c("Repeatability", "Among-Group", "Within-Group")) +
-    theme_classic()+
-    theme(legend.position = 'none', #c(0.3, 0.90),
-          legend.key.size = unit(0.3, 'cm'),
-          legend.text = element_text(size = 6),
-          axis.text.x = element_text(size = 8),
-          axis.title.x = element_text(size = 10),
-          axis.text.y = element_text(size = 8),
-          axis.title.y = element_text(size = 10)) #+
-  #annotate("text", label = "B", size = 5, x = -1, y = 0.8)
-  
-  rpt.plot
-  plt.repeat
-  plt.day <- ggplot(pred.intercepts, aes(x=dates.rep, y=blup, group=picomp, color=picomp)) + 
-    geom_line() + 
-    ggtitle(depVar) +
-    theme_classic() + 
-    #ylim(ylims) + 
-    ylab('blup') + 
-    xlab('Days since birth') + 
-    theme(legend.position = "none",
-          rect=element_rect(fill="transparent"),
-          panel.background=element_rect(fill="transparent"),
-          axis.line = element_line(linewidth = 0.5, colour = "black"),
-          axis.ticks = element_line(colour = "black"),
-          axis.text = element_text(size = 12, colour = "black"),
-          axis.title = element_text(size = 14, face = "bold", colour = "black"),
-          plot.title = element_text(hjust = 0.5, size = 14))
-  
-  plt.day
-  return(list(plt.day,plt.repeat,rpt.plot,blup.plot,rpt.slice.wide,pred.rank,model.blup))
-}
-
-func.ndays.intercepts.het <- function(depVar,df,day_bin=1,prior.cov = prior.id.slope.cov) {
+func.ndays.intercepts.het <- function(depVar,df,day_bin=1,prior.cov = prior.id.best) {
   # select only those IDs in that vector & only keep up to obs 70 & make obs 1 = 0
 
   max_days <- max(df$ExpDay) ## It's 0 indexed
@@ -572,10 +370,26 @@ func.rpt.plot <- function(rpt.data,n_days=1,components=F) {
   else {
     breaks <- dates
   }  
+  if (components == T) {
   rpt.plot <- ggplot(rpt.data, aes(x = dates)) +
-    geom_point(aes(y = rpt, color = "#000000"), size = 3) +
+    geom_line(aes(x = dates-0.5, y = post.id_, color = "#959595")) +
+    geom_point(aes(x = dates-0.5, y = post.id_), shape = 21, color = "#000000", fill = "#959595", size = 1) +
+    
+    #geom_errorbar(aes(x = dates+0.5, ymin = lower.w_, ymax = upper.w_, width = 1, color = "#000000")) +
+    geom_line(aes(x = dates+0.5, y = post.w_, color = "#CCCCCC")) +
+    geom_point(aes(x = dates + 0.5, y = post.w_), shape = 21, color = "#000000", fill = "#CCCCCC", size = 1) +
+  
+    geom_point(aes(y = rpt, color = "#000000"), size = 1) +
     geom_line(aes(x=dates, y = rpt, color = "#000000")) +
-    geom_errorbar(aes(ymin = lower.rpt, ymax = upper.rpt, width = 1, color = "#000000")) +
+    geom_errorbar(aes(ymin = lower.rpt, ymax = upper.rpt, width = 1, color = "#000000")) 
+  }
+  else {
+    rpt.plot <- ggplot(rpt.data, aes(x = dates)) +
+    geom_point(aes(y = rpt, color = "#000000"), size = 1) +
+    geom_line(aes(x=dates, y = rpt, color = "#000000")) +
+    geom_errorbar(aes(ymin = lower.rpt, ymax = upper.rpt, width = 1, color = "#000000")) 
+  }
+    rpt.plot <- rpt.plot + 
     scale_x_continuous(breaks = breaks, labels = breaks) +
     scale_y_continuous(name = "Variance estimate",limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1.0)) +
     labs(x = "Day",
@@ -583,24 +397,14 @@ func.rpt.plot <- function(rpt.data,n_days=1,components=F) {
     scale_color_manual(name = "", 
                        values =c("#000000",  "#959595",  "#CCCCCC"),
                        labels = c("Repeatability", "Among-Group", "Within-Group")) +
-    theme_classic()+
-    theme(legend.position = 'none', #c(0.3, 0.90),
+    theme_classic() +
+    theme(legend.position = c(0.2, 0.93),
           legend.key.size = unit(0.3, 'cm'),
           legend.text = element_text(size = 6),
           axis.text.x = element_text(size = 8),
           axis.title.x = element_text(size = 10),
           axis.text.y = element_text(size = 8),
           axis.title.y = element_text(size = 10)) #+
-  if (components) { 
-    rpt.plot <- rpt.plot + 
-      #geom_errorbar(aes(x = dates-0.5, ymin = lower.id_, ymax = upper.id_, width = 1, color = "#000000")) +
-      geom_line(aes(x = dates-0.5, y = post.id_, color = "#959595")) +
-      geom_point(aes(x = dates-0.5, y = post.id_), shape = 21, color = "#000000", fill = "#959595", size = 3) +
-      
-      #geom_errorbar(aes(x = dates+0.5, ymin = lower.w_, ymax = upper.w_, width = 1, color = "#000000")) +
-      geom_line(aes(x = dates+0.5, y = post.w_, color = "#CCCCCC")) +
-      geom_point(aes(x = dates + 0.5, y = post.w_), shape = 21, color = "#000000", fill = "#CCCCCC", size = 3) 
-  }
   
   return(rpt.plot)
 }
@@ -641,7 +445,7 @@ func.shuffle.df <- function(df) {
 ### Simplified function to just get repeatability, to be run in parallel
 
 ### Simplified function for shuffling and calculating rpt. 
-func.shuffled.rpt.i <- function(i,depVar="dist_mean",day_bin=1,prior.cov=prior.id.slope.coh) {
+func.shuffled.rpt.i <- function(i,depVar="dist_mean",day_bin=1,prior.cov=prior.best) {
   # select only those IDs in that vector & only keep up to obs 70 & make obs 1 = 0
   set.seed(i)
   df.shuffled <- func.shuffle.df(indv.long54)
@@ -697,6 +501,7 @@ func.shuffled.rpt.i <- function(i,depVar="dist_mean",day_bin=1,prior.cov=prior.i
   rpt <- unlist(rpt)
   return(rpt) }
 
+func.shuffled.rpt.i(1)
 ## Run for real: 
 ### Set interations:  vvv below. Be sure to set cores  vv. 
 rpt.all <- mclapply(1:50,func.shuffled.rpt.i,mc.cores=5L)
@@ -783,249 +588,6 @@ ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.angleC.sliding.jpg'
 #rpt.plot.angleC; sliding.angleC[[1]]
 
 ### Difference vs random (row 3 in fig 2) is calculated using shuffleTracks.py
-
-## Define function to get predictability over time
-func.ndays.predict.old <- function(depVar,df,n_days) {
-  
-  df$velC_scale <- df$velC_mean * 100
-  
-  df
-  ## build bin column
-  df$bin <- df$ExpDay %/% n_days
-  
-  ## Can I get away with not dropping values? 
-  #df <- df[df$Pi != 'pi31',] ## This one has missing values. 
-  
-  maxes <- df %>%
-    group_by(Pi) %>%
-    summarise(max = max(bin, na.rm=TRUE))
-  
-  max_days = max(unique(df$ExpDay))
-  max_bin = max_days %/% n_days
-  ## Generating wide programatically is tricky...
-  
-  ## This is sort of a trick, it works for any n_days less than 11
-  df.wide <- df %>%
-    mutate(
-      obs.day = case_when(
-        ExpDay %in% seq(0,max_days,n_days) ~ 1 %% n_days + 1, 
-        ExpDay %in% seq(1,max_days,n_days) ~ 2 %% n_days + 1, 
-        ExpDay %in% seq(2,max_days,n_days) ~ 3 %% n_days + 1, 
-        ExpDay %in% seq(3,max_days,n_days) ~ 4 %% n_days + 1, 
-        ExpDay %in% seq(4,max_days,n_days) ~ 5 %% n_days + 1, 
-        ExpDay %in% seq(5,max_days,n_days) ~ 6 %% n_days + 1, 
-        ExpDay %in% seq(6,max_days,n_days) ~ 7 %% n_days + 1, 
-        ExpDay %in% seq(7,max_days,n_days) ~ 8 %% n_days + 1, 
-        ExpDay %in% seq(8,max_days,n_days) ~ 9 %% n_days + 1, 
-        ExpDay %in% seq(9,max_days,n_days) ~ 10 %% n_days + 1, 
-        ExpDay %in% seq(10,max_days,n_days) ~ 11 %% n_days + 1, 
-      )) %>%
-    select(Pi, bin, all_of(depVar), obs.day) %>%
-    spread(bin, depVar, sep = "")
-  
-  #df.clean <- df.wide[, colSums(is.na(df.wide)) == 0]
-  df.clean <- df.wide[rowSums(is.na(df.wide)) == 0,]
-  
-  df.wide <- df.clean ## Is this ok? 
-  ## Not sure how do handle the next trick...need to cbind an arbitrary bin0
-  
-  bins.list <- (names(df.clean))[3:length(names(df.clean))]
-  bins.str <- paste(bins.list,collapse = ',')
-  form.bins <- as.formula(paste("cbind(",bins.str,") ~ trait - 1",sep=""))
-  print(bins.list)
-  n_bins <- length(bins.list)
-  
-  prior.b <- list(R = list(V = diag(n_bins), nu = n_bins + .002),
-                  G = list(G1=list(V = diag(n_bins), nu = n_bins + .002, alpha.mu = rep(0,n_bins), alpha.V = 1000*diag(n_bins))))
-  
-  behav.bin.id <- MCMCglmm(form.bins, 
-                           random = ~us(trait):Pi,
-                           rcov = ~us(trait):units,
-                           family = c(rep("gaussian", n_bins)), 
-                           prior = prior.b, 
-                           pr = T, 
-                           nitt = 510000, thin = 200, burnin = 10000, 
-                           verbose = F,
-                           data = df.wide)
-  
-  # Model with only ID ----
-  
-  id.matrix.bin0 <- matrix(posterior.mode(posterior.cor(behav.bin.id$VCV[,1:(n_bins * n_bins)])),n_bins,n_bins, 
-                          dimnames = list(bins.list, 
-                                          bins.list))
-  id.matrix.bin <- matrix(colMedians(posterior.cor(behav.bin.id$VCV[,1:(n_bins * n_bins)])),n_bins,n_bins, 
-                          dimnames = list(bins.list, 
-                                          bins.list))
-  print(posterior.cor(behav.bin.id$VCV[,1:(n_bins * n_bins)]))
-  print(posterior.mode(posterior.cor(behav.bin.id$VCV[,1:(n_bins * n_bins)])))
-  print(median(posterior.cor(behav.bin.id$VCV[,1:(n_bins * n_bins)])))
-  
-  print('Before and after:')
-  print(id.matrix.bin)
-  print(id.matrix.bin.median)
-  # now to extract the CI estimates
-  ci.bin <- data.frame(HPDinterval(posterior.cor(behav.bin.id$VCV[,1:(n_bins*n_bins)])))
-  print(ci.bin)
-  # for corrplot need 3 matrices - estimates, lower CI, upper CI
-  lower.bin <- matrix(ci.bin[,1],length(bins.list),length(bins.list))
-  upper.bin <- matrix(ci.bin[,2],length(bins.list),length(bins.list))
-  
-  test <- melt(lower.bin) %>%
-    mutate(p.value = ifelse(value < 0, 1, 0)) %>%
-    select(Var1, Var2, p.value)
-  
-  ## Need these for separate plots
-  test.lower <- melt(replace(lower.bin, lower.tri(lower.bin, T), NA), na.rm = T)
-  test.upper <- melt(replace(upper.bin, lower.tri(upper.bin, T), NA), na.rm = T)
-  
-  ci.long <- left_join(test.lower, test.upper, by = c("Var1", "Var2")) %>%
-    rename(start.bin = Var1,
-           end.bin = Var2,
-           lower = value.x, 
-           upper = value.y) %>%
-    arrange(start.bin, end.bin)
-  
-  df.corrs <- melt(replace(id.matrix.bin, lower.tri(id.matrix.bin, T), NA), na.rm = T)
-  
-  df.corrs$start.bin <- as.numeric(substr(df.corrs$Var1, 4, 5))
-  df.corrs$end.bin <- as.numeric(substr(df.corrs$Var2, 4, 5))
-  df.corrs$diff <- df.corrs$end.bin - df.corrs$start.bin
-  
-  ## Need to shift to have it 0 indexed
-  ci.long$start.bin <- ci.long$start.bin -1
-  ci.long$end.bin <- ci.long$end.bin -1
-  among.corr <- left_join(df.corrs, ci.long, by = c("start.bin", "end.bin"))
-  
-  p.mat <- diag(n_bins)
-  p.mat[cbind(test$Var1, test$Var2)] <- p.mat[cbind(test$Var2, test$Var1)] <- test$p.value
-  print(p.mat)
-  print(id.matrix.bin)
-  
-  plt.week.corr <- ggcorrplot(id.matrix.bin, 
-                              type = "lower", 
-                              p.mat = p.mat, 
-                              insig= "blank",
-                              colors = c("slateblue4","gray", "mediumorchid1"))
-  
-  plt.week.corr
-  
-  s=1
-  
-  pred.df <-data.frame(Pred=double(),upper=double(),lower=double(),bin=integer(),Pstep=factor())
-  
-  r.0 <- unlist(id.matrix.bin[1,])
-  ci_low.0 <- unlist(lower.bin[1,])
-  ci_up.0 <- unlist(upper.bin[1,])
-  
-  r.last <- unlist(id.matrix.bin[,n_bins])
-  ci_low.last <- unlist(lower.bin[,n_bins])
-  ci_up.last <- unlist(upper.bin[,n_bins])
-  
-  pred.df2 <- data.frame(bin=seq(n_bins),bin0_corr=r.0,bin0_lower=ci_low.0,bin0_upper=ci_up.0,
-                         binLast_corr=r.last,binLast_lower=ci_low.last,binLast_upper=ci_up.last)
-  
-  plt.predict.one <- ggplot(pred.df2,aes(x=bin*n_days)) + 
-    #geom_point(shape=1,size=4) + 
-    geom_line(aes(y=bin0_corr,colour='First Bin Correlation')) +
-    geom_line(aes(y=binLast_corr,colour='Last Bin Correlation')) +
-    #geom_errorbar(aes(ymin=bin0_lower,ymax=bin0_upper,colour='First Bin Correlation')) + 
-    #geom_errorbar(aes(ymin=binLast_lower,ymax=binLast_upper,colour='Last Bin Correlation')) + 
-    #ggtitle(depVar) +
-    #ylim(0,1) + 
-    ylab('Group-level Correlation') + 
-    xlab('Days since birth') + 
-    theme_classic() + 
-    scale_color_discrete(name="Step") +
-    guides(colour = guide_legend(reverse = F),) + 
-    theme(legend.position = "none",
-          rect=element_rect(fill="transparent"),
-          panel.background=element_rect(fill="transparent"),
-          axis.line = element_line(linewidth = 0.5, colour = "black"),
-          axis.ticks = element_line(colour = "black"),
-          axis.text = element_text(size = 12, colour = "black"),
-          axis.title = element_text(size = 14, face = "bold", colour = "black"),
-          plot.title = element_text(hjust = 0.5, size = 14)) 
-  
-  plt.predict.one
-  
-  
-  for (s in 1:(n_bins -2)){
-    pred.list <- list()
-    lower.list <- list()
-    upper.list <- list()
-    for(i in 1:(n_bins-s)){
-      r <- id.matrix.bin[i,i+s]
-      ci_low <- lower.bin[i,i+s]
-      ci_up <- upper.bin[i,i+s]
-      pred.list[i] <- r
-      lower.list[i] <- ci_low
-      upper.list[i] <- ci_up
-    }
-    pred.list <- unlist(pred.list)
-    lower.list <- unlist(lower.list)
-    upper.list <- unlist(upper.list)
-    pred.list
-    upper.list
-    lower.list
-    
-    pred.sub <- data.frame(pred.list,lower.list,upper.list,seq(1,length(upper.list)),rep(s,length(upper.list)))
-    names(pred.sub) <- c("Pred","upper","lower","bin","Pstep")
-    pred.df <-rbind(pred.df,pred.sub)
-    
-  }
-  pred.df
-  
-  colourslist <- scales::hue_pal()(length(unique(pred.df$Pstep)))
-  # Name your list of colors
-  names(colourslist) <- unique(pred.df$Pstep)
-  
-  plt.predict.steps <- ggplot(pred.df,aes(x=bin*n_days,y=Pred,group=Pstep,color=as.factor(Pstep))) + 
-    #geom_point(shape=1,size=4) + 
-    geom_line() +
-    #geom_errorbar(aes(ymin=lower,ymax=upper)) + 
-    ggtitle(depVar) +
-    #ylim(0,1) + 
-    ylab('Predictability') + 
-    xlab('Days since birth') + 
-    theme_classic() + 
-    scale_color_discrete(name="Step") +
-    guides(colour = guide_legend(reverse = F),) + 
-    theme(legend.position = "right",
-          rect=element_rect(fill="transparent"),
-          panel.background=element_rect(fill="transparent"),
-          axis.line = element_line(linewidth = 0.5, colour = "black"),
-          axis.ticks = element_line(colour = "black"),
-          axis.text = element_text(size = 12, colour = "black"),
-          axis.title = element_text(size = 14, face = "bold", colour = "black"),
-          plot.title = element_text(hjust = 0.5, size = 14)) 
-  plt.predict.steps
-  pred.df
-  
-  pred.onestep <- pred.df[pred.df$Pstep == 1,]
-  plt.onestep <- ggplot(pred.onestep,aes(x=bin*n_days,y=Pred)) + 
-    #geom_point(shape=1,size=4) + 
-    geom_line() +
-    #geom_errorbar(aes(ymin=lower,ymax=upper)) + 
-    ggtitle(s) +
-    #ylim(0,1) + 
-    ylab('Predictability') + 
-    xlab('Days since birth') + 
-    theme_classic() + 
-    #scale_color_discrete(name="Step") +
-    #guides(colour = guide_legend(reverse = F),) + 
-    theme(legend.position = "none",
-          rect=element_rect(fill="transparent"),
-          panel.background=element_rect(fill="transparent"),
-          axis.line = element_line(linewidth = 0.5, colour = "black"),
-          axis.ticks = element_line(colour = "black"),
-          axis.text = element_text(size = 12, colour = "black"),
-          axis.title = element_text(size = 14, face = "bold", colour = "black"),
-          plot.title = element_text(hjust = 0.5, size = 14)) 
-  plt.onestep
-  #return(list(plt.week.corr, plt.predict.one,behav.bin.id,n_bins,id.matrix.bin,ci.bin))
-  return(list(plt.week.corr, plt.predict.one,behav.bin.id,n_bins,among.corr,df.wide))
-}
-
 
 func.ndays.predict <- function(depVar,df,n_days=5) {
   #df <- indv.long54
@@ -1274,7 +836,6 @@ func.ndays.predict <- function(depVar,df,n_days=5) {
   return(list(plt.week.corr, plt.predict.one,behav.bin.id,n_bins,among.corr,df.wide))
 }
 
-
 plots.predict.dist <- func.ndays.predict('dist_mean',indv.long54,5)
 
 
@@ -1290,7 +851,7 @@ for (r in seq(dim(among.corr.d)[1])) {
   #print(among.corr.100[r,1:2])
   bar <- as.formula(paste(among.corr.d[r,1],'~',among.corr.d[r,2]))
 
-  res.bar <- lme(bar,random=~1|obs.day,data=foo)
+  res.bar <- lme(bar,random=~1|obs.day,data=plots.predict.dist[[6]])
   simp.corr <- res.bar$coefficients$fixed[2]
   among.corr.d[r,'lme.corr'] <- simp.corr
 }
@@ -1357,6 +918,10 @@ func.megafig <- function(plots.predict) {
   for (i in seq(n_bins)) {
     for (j in seq(n_bins)) {
       if(i >= j) next
+      x_min <- min(binwise.blups[,j+1])
+      x_max <- max(binwise.blups[,j+1])
+      y_min <- min(binwise.blups[,i+1])
+      y_max <- max(binwise.blups[,i+1])
       n_count <- n_count + 1
       slope <- among.corr[among.corr$Var1 == bin_names.full[i] & among.corr$Var2 == bin_names.full[j],]$value
 
@@ -1435,5 +1000,43 @@ ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.angleC.j
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.angleC.svg',megafig.angleC,width = 6.5,height=6.5,units="in")
 
 
-#megafig.dist
-#megafig.vel
+### I think the last thing I need is to check correlation among behaviors. 
+# This more fine scale I can get the better. Hourly might be good enough to start. 
+prior.cov6 <- list(R = list(V = diag(6), nu = 6.002),
+                   G = list(G1=list(V = diag(6), nu = 6.002, alpha.mu = rep(0,6), alpha.V = 1000*diag(6))))
+
+behav.all.cor <- MCMCglmm(cbind(dist_meanScale, vel_meanScale, velC_meanScale, pDist_meanScale,pDistC_meanScale,angleC_meanScale) ~ trait - 1, 
+                          random = ~us(trait):Pi, 
+                          rcov = ~us(trait):units,
+                          family = c(rep("gaussian", 6)), 
+                          prior = prior.cov6, 
+                          nitt = 510000, thin = 200, burnin = 10000, 
+                          verbose = F,
+                          data = indv.com)
+
+# Model for entire observation period  ----
+behav.matrix.all <- matrix(posterior.mode(posterior.cor(behav.all.cor$VCV[,1:36])),6,6, 
+                           dimnames = list(c("dist", "vel", "velC", "pDist","pDistC","angleC"), 
+                                           c("dist", "vel", "velC", "pDist","pDistC","angleC")))
+
+
+# now to extract the CI estimates
+ci.all <- data.frame(HPDinterval(posterior.cor(behav.all.cor$VCV[,1:36])))
+
+# for corrplot need 3 matrices - estimates, lower CI, upper CI
+lower.all <- matrix(ci.all[,1],6,6)
+upper.all <- matrix(ci.all[,2],6,6)
+
+test <- melt(lower.all) %>%
+  mutate(p.value = ifelse(value < 0, 1, 0)) %>%
+  select(Var1, Var2, p.value)
+
+p.mat <- diag(6)
+p.mat[cbind(test$Var1, test$Var2)] <- p.mat[cbind(test$Var2, test$Var1)] <- test$p.value
+
+colnames(p.mat) <- c("dist", "vel", "velC", "pDist","pDistC","angleC")
+row.names(p.mat) <- c("dist", "vel", "velC", "pDist","pDistC","angleC")
+
+corrplot(behav.matrix.all, type = "upper", method = "ellipse", p.mat = p.mat, insig = "blank")
+
+
