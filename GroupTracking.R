@@ -914,7 +914,7 @@ func.megafig <- function(plots.predict,hourly=F) {
   ## Need to have weekly blups?
   # n_bins:len(Sol)
   if (hourly) {
-    shift <- 1 + 11
+    shift <- 1
   }
   else {
     shift <- 1
