@@ -415,8 +415,38 @@ def get_meta(csv_file,csv_dir):
 
     return pi,delta_days
 
+def get_df(i,pi):
+    i_list = []
+    pi_list = []
+    n_list = []
+    v_list = []
+    next_nans = []
+    last_nans = []
+    for n in range(n_fish):
+        next_nan = get_next(velocity_array[i:,n])
+        next_nans.append(next_nan)
+        last_nan = get_next(velocity_array[i::-1,n])
+        last_nans.append(last_nan)
+    
+    next_nan = min(next_nans)
+    last_nan = min(last_nans)
+    #if next_nan - last_nan < 10:
+    #    continue
+
+    for n in range(n_fish):
+        tracklet_n = velocity_array[i-last_nan+1:i+next_nan,n]
+
+        i_list.extend(np.arange(i-last_nan+1,i+next_nan))
+        n_list.extend(['.'.join([pi,str(n)])] * len(tracklet_n))
+        pi_list.extend([pi] * len(tracklet_n))
+        v_list.extend(tracklet_n)                    
+
+    tmp_df = pd.DataFrame(zip(*[i_list,n_list,pi_list,v_list]),columns=['i','id','pi','vel'])
+    return tmp_df
+
 if __name__ == '__main__':
-    out_file = open('test_rpt2.csv','w')
+    out_file = open('test_rpt3.csv','w')
+    lists_of_dfs = [[None for i in range(10)] for i in range(100)]
     csv_dir = sys.argv[1]
     pi_dict = {'pi13':0,'pi14':1} #,'pi54':2}
 
@@ -503,6 +533,7 @@ if __name__ == '__main__':
 ## Then finding the means, ranking the tracklets, and assigning them to the ranked array.
         if True:
             len_list = []
+            len_list_i = []
             means = [0] * 4
             means_dist = [0] * 4
             means_Pdist = [0] * 4
@@ -524,6 +555,7 @@ if __name__ == '__main__':
                 if next_nan - last_nan < 10:
                     continue
                 len_list.append(next_nan - last_nan)
+                len_list_i.append(i)
                 for n in range(n_fish):
                     #next_nan = get_next(velocity_array[i:,n])
                     #last_nan = get_next(velocity_array[i::-1,n])
@@ -571,12 +603,19 @@ if __name__ == '__main__':
                     ranked_pDistarray[i0_p:i1_p,n_] = pDist_array[i0_p:i1_p,n_p] ## This is lowest to highest
                     ranked_distarray[i0_c:i1_c,n_] = distanceM_array[i0_c:i1_c,n_c] ## This is lowest to highest
 
-                if True:
+                if False:
                     tmp_df = pd.DataFrame(zip(*[i_list,n_list,v_list]),columns=['i','id','vel'])
                     #cw_lm=ols('vel ~ i + C(id)',data=tmp_df).fit()
-                    import pdb;pdb.set_trace()
+                    #import pdb;pdb.set_trace()
 
-                    model=mixedlm('vel ~ i',data=tmp_df,groups=tmp_df["id"]).fit()
+                    model=mixedlm('vel ~ i',data=tmp_df,groups=tmp_df["id"])
+                    try:
+                        model = model.fit()
+                    except:
+## There is a weird error with convergence, seems to be computer specific
+                        model = model.fit(method=['bfgs'])
+                        print('model did not converge for index',i,'using bfgs')
+                        #import pdb;pdb.set_trace()
                     var_w = model.scale
                     var_a = model.cov_re.iloc[0,0]
                     #res = sm.stats.anova_lm(cw_lm,typ=2)
@@ -585,8 +624,18 @@ if __name__ == '__main__':
                     rpt = var_a / (var_a+var_w)
                     rpt_output = [pi,str(day),str(i),str(rpt),str(var_w),str(var_a),csv_file,'\n']
                     out_file.write(','.join(rpt_output)) 
-            import pdb;pdb.set_trace()
-            print(np.unique(len_list,return_counts=True))
+            #import pdb;pdb.set_trace()
+            #print(np.unique(len_list,return_counts=True))
+            top_Is = np.array(len_list_i)[np.argsort(len_list)[::-1]][:10]
+            for i_ in range(len(top_Is)):
+                i = top_Is[i_]
+                tmp_df = get_df(i,pi)
+                if lists_of_dfs[day][i_] is None:
+                    lists_of_dfs[day][i_] = tmp_df
+                else:
+                    #import pdb;pdb.set_trace()
+                    lists_of_dfs[day][i_] = pd.concat([lists_of_dfs[day][i_],tmp_df],ignore_index=True)
+
         else:  ## alternatively, you can just go frame by frame, but the above is more reliable and more data.
             for i in range(4):
                 ranked_array[:,0] = velocity_array[np.arange(n_frames),ranked_velocity[:,0]]
@@ -617,6 +666,24 @@ if __name__ == '__main__':
             ax.plot(smooth_vel[:,0],color='red',linestyle=':')
             plt.show()
 
+
+## Ok, now we have a whole bunch of df's in lists of lists
+    #import pdb;pdb.set_trace()
+    for d in tqdm(range(len(lists_of_dfs))):
+        for r in range(len(lists_of_dfs[d])):
+            if lists_of_dfs[d][r] is not None:
+                day_r_df = lists_of_dfs[d][r]
+## Sort of clunky syntax to get this to work in python, should confirm with R
+                day_r_df["group"] = 1
+                vcf = {'id': "0 + C(id)",'pi':'0 + C(pi)'}
+                model = sm.MixedLM.from_formula("vel ~ i",groups="group",vc_formula=vcf,re_formula="~id",data=day_r_df)
+                mdf = model.fit()
+                res_var = mdf.scale
+                id_var,pi_var = mdf.vcomp
+                id_rpt = id_var / (id_var + res_var)
+                pi_rpt = pi_var / (pi_var + id_var)
+                out_line = ','.join([str(d),str(r),str(id_rpt),str(pi_rpt),str(id_var),str(pi_var),str(res_var),'\n'])
+                out_file.write(out_line)
 
     import pdb;pdb.set_trace()
     out_file.close()
