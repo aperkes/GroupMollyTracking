@@ -78,6 +78,10 @@ hourly$ExpDay <- as.integer(hourly$ExpDay)
 
 good_hourly <- hourly[hourly$Pi != "pi34",]
 good_hourly <- good_hourly[good_hourly$Pi != "pi41",]
+long_hourly54 <- good_hourly %>% 
+  filter(Pi %in% piDays[piDays$max >= 54,]$Pi)
+indv.hourly54 <- long_hourly54[long_hourly54$ExpDay <= 54,]
+
 good_hourly <- good_hourly[good_hourly$ExpDay <= 31,]
 
 hourly.com <- good_hourly
@@ -287,7 +291,7 @@ func.ndays.intercepts.het <- function(depVar,df,day_bin=1,prior.cov = prior.id.b
 ### Get repeatability values ####
 
 ## These two are in the paper proper 
-
+plots.dist.hourly <- func.ndays.intercepts.het('dist_meanScale',indv.hourly54,n_days,prior.cov=prior.best)
 plots.dist <- func.ndays.intercepts.het('dist_meanScale',indv.long54,n_days,prior.cov=prior.best)
 plots.velC <- func.ndays.intercepts.het('velC_meanScale',indv.long54,n_days,prior.cov=prior.best)
 
@@ -589,7 +593,7 @@ ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.angleC.sliding.jpg'
 
 ### Difference vs random (row 3 in fig 2) is calculated using shuffleTracks.py
 
-func.ndays.predict <- function(depVar,df,n_days=5) {
+func.ndays.predict <- function(depVar,df,n_days=5,hourly=F) {
   #df <- indv.long54
   #df$velC_scale <- df$velC_mean * 100
   
@@ -609,6 +613,28 @@ func.ndays.predict <- function(depVar,df,n_days=5) {
   ## Generating wide programatically is tricky...
   
   ## This is sort of a trick, it works for any n_days less than 11
+  if (hourly) { 
+    df.wide <- df %>%
+      mutate(
+        obs.day = case_when(
+          ExpDay %in% seq(0,max_days,n_days) ~ 1 %% n_days + 1, 
+          ExpDay %in% seq(1,max_days,n_days) ~ 2 %% n_days + 1, 
+          ExpDay %in% seq(2,max_days,n_days) ~ 3 %% n_days + 1, 
+          ExpDay %in% seq(3,max_days,n_days) ~ 4 %% n_days + 1, 
+          ExpDay %in% seq(4,max_days,n_days) ~ 5 %% n_days + 1, 
+          ExpDay %in% seq(5,max_days,n_days) ~ 6 %% n_days + 1, 
+          ExpDay %in% seq(6,max_days,n_days) ~ 7 %% n_days + 1, 
+          ExpDay %in% seq(7,max_days,n_days) ~ 8 %% n_days + 1, 
+          ExpDay %in% seq(8,max_days,n_days) ~ 9 %% n_days + 1, 
+          ExpDay %in% seq(9,max_days,n_days) ~ 10 %% n_days + 1, 
+          ExpDay %in% seq(10,max_days,n_days) ~ 11 %% n_days + 1, 
+        )) %>%
+      select(Pi, bin, all_of(depVar), obs.day,Hour) %>%
+      spread(bin, depVar, sep = "")
+    }
+  else {
+    
+
   df.wide <- df %>%
     mutate(
       obs.day = case_when(
@@ -626,7 +652,7 @@ func.ndays.predict <- function(depVar,df,n_days=5) {
       )) %>%
     select(Pi, bin, all_of(depVar), obs.day) %>%
     spread(bin, depVar, sep = "")
-  
+  }
   #df.clean <- df.wide[, colSums(is.na(df.wide)) == 0]
   df.clean <- df.wide[rowSums(is.na(df.wide)) == 0,]
   
@@ -651,7 +677,7 @@ func.ndays.predict <- function(depVar,df,n_days=5) {
     df.wide[,b] <- scale(df.wide[,b])
 
   }
-
+  print(df.wide)
   print(form.bins)
   behav.bin.id <- MCMCglmm(form.bins, 
                            random = ~us(trait):Pi,
@@ -660,7 +686,7 @@ func.ndays.predict <- function(depVar,df,n_days=5) {
                            prior = prior.b, 
                            pr = T, 
                            nitt = 510000, thin = 200, burnin = 10000, 
-                           verbose = F,
+                           verbose = T,
                            data = df.wide)
   
   # Model with only ID ----
@@ -837,7 +863,7 @@ func.ndays.predict <- function(depVar,df,n_days=5) {
 }
 
 plots.predict.dist <- func.ndays.predict('dist_mean',indv.long54,5)
-
+plots.predict.dist.hourly <- func.ndays.predict('dist_mean',indv.hourly54,5,hourly=T)
 
 ### Binwise correlation
 # There is some weirdness in scaling with MCMCglmm
