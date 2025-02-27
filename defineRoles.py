@@ -574,7 +574,8 @@ if __name__ == '__main__':
                 if True:
                     tmp_df = pd.DataFrame(zip(*[i_list,n_list,v_list]),columns=['i','id','vel'])
                     #cw_lm=ols('vel ~ i + C(id)',data=tmp_df).fit()
-                    #import pdb;pdb.set_trace()
+                    import pdb;pdb.set_trace()
+
                     model=mixedlm('vel ~ i',data=tmp_df,groups=tmp_df["id"]).fit()
                     var_w = model.scale
                     var_a = model.cov_re.iloc[0,0]
@@ -584,7 +585,8 @@ if __name__ == '__main__':
                     rpt = var_a / (var_a+var_w)
                     rpt_output = [pi,str(day),str(i),str(rpt),str(var_w),str(var_a),csv_file,'\n']
                     out_file.write(','.join(rpt_output)) 
-            #print(np.unique(len_list,return_counts=True))
+            import pdb;pdb.set_trace()
+            print(np.unique(len_list,return_counts=True))
         else:  ## alternatively, you can just go frame by frame, but the above is more reliable and more data.
             for i in range(4):
                 ranked_array[:,0] = velocity_array[np.arange(n_frames),ranked_velocity[:,0]]
