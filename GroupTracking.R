@@ -660,6 +660,7 @@ func.ndays.predict <- function(depVar,df,n_days=5,hourly=F) {
   ## Not sure how do handle the next trick...need to cbind an arbitrary bin0
   
   bins.list <- (names(df.clean))[3:length(names(df.clean))]
+  bins.list <- bins.list[bins.list != 'Hour']
   bins.str <- paste(bins.list,collapse = ',')
   
   form.bins <- as.formula(paste("cbind(",bins.str,") ~ trait - 1",sep=""))
