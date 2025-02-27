@@ -859,6 +859,11 @@ func.ndays.predict <- function(depVar,df,n_days=5,hourly=F) {
           plot.title = element_text(hjust = 0.5, size = 14)) 
   plt.onestep
   #return(list(plt.week.corr, plt.predict.one,behav.bin.id,n_bins,id.matrix.bin,ci.bin))
+  
+  if (hourly) { 
+    among.corr <- among.corr[among.corr$Var1 !='Hour',]
+    n_bins <- n_bins - 1
+    }
   return(list(plt.week.corr, plt.predict.one,behav.bin.id,n_bins,among.corr,df.wide))
 }
 
@@ -895,7 +900,7 @@ plots.predict.angleC <- func.ndays.predict('angleC_meanScale',indv.long54,5)
 ### Building the whole matrix fig is quite complicated
 
 ### Define function to plot massive correlation plot
-func.megafig <- function(plots.predict) {
+func.megafig <- function(plots.predict,hourly=F) {
   
   
   behav.bin.id <- plots.predict[[3]]
@@ -907,8 +912,14 @@ func.megafig <- function(plots.predict) {
   
   ## Need to have weekly blups?
   # n_bins:len(Sol)
-  binwise.blups <- data_frame(Trait = colnames(behav.bin.id$Sol)[(n_bins + 1):ncol(behav.bin.id$Sol)],
-                              Value = unname(colMedians(behav.bin.id$Sol)[(n_bins + 1):ncol(behav.bin.id$Sol)])) %>%
+  if (hourly) {
+    shift <- 1 + 11
+  }
+  else {
+    shift <- 1
+  }
+  binwise.blups <- data_frame(Trait = colnames(behav.bin.id$Sol)[(n_bins + shift):ncol(behav.bin.id$Sol)],
+                              Value = unname(colMedians(behav.bin.id$Sol)[(n_bins + shift):ncol(behav.bin.id$Sol)])) %>%
     separate(Trait, into = c("bin", "pi", "comp")) %>%
     mutate(picomp = paste(pi, comp, sep = "_"),
            bin = substr(bin, nchar(bin)-3, nchar(bin))) %>%
@@ -995,6 +1006,9 @@ func.megafig <- function(plots.predict) {
 
 megafig.dist <- func.megafig(plots.predict.dist)
 megafig.dist
+
+megafig.dist.hourly <- func.megafig(plots.predict.dist.hourly,T)
+megafig.dist.hourly
 
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plot.F3.megafig.dist.jpg',megafig.dist,width = 6.5,height=6.5,units="in")
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plot.F3.megafig.dist.svg',megafig.dist,width = 6.5,height=6.5,units="in")
