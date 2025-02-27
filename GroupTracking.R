@@ -1040,3 +1040,47 @@ row.names(p.mat) <- c("dist", "vel", "velC", "pDist","pDistC","angleC")
 corrplot(behav.matrix.all, type = "upper", method = "ellipse", p.mat = p.mat, insig = "blank")
 
 
+
+hourly.com$dist_meanScale <- scale(hourly.com$dist_mean)
+hourly.com$vel_meanScale <- scale(hourly.com$vel_mean)
+hourly.com$pDist_meanScale <- scale(hourly.com$pDist_mean)
+
+hourly.com$velC_meanScale <- scale(hourly.com$velC_mean)
+hourly.com$pDistC_meanScale <- scale(hourly.com$pDistC_mean)
+hourly.com$angleC_meanScale <- scale(hourly.com$angleC_mean)
+
+behav.hourly.cor <- MCMCglmm(cbind(dist_meanScale, vel_meanScale, velC_meanScale, pDist_meanScale,pDistC_meanScale,angleC_meanScale) ~ trait - 1, 
+                          random = ~us(trait):Pi, 
+                          rcov = ~us(trait):units,
+                          family = c(rep("gaussian", 6)), 
+                          prior = prior.cov6, 
+                          nitt = 510000, thin = 200, burnin = 10000, 
+                          verbose = T,
+                          data = hourly.com)
+
+
+behav.matrix.hourly <- matrix(posterior.mode(posterior.cor(behav.hourly.cor$VCV[,1:36])),6,6, 
+                           dimnames = list(c("dist", "vel", "velC", "pDist","pDistC","angleC"), 
+                                           c("dist", "vel", "velC", "pDist","pDistC","angleC")))
+
+
+# now to extract the CI estimates
+ci.hourly <- data.frame(HPDinterval(posterior.cor(behav.hourly.cor$VCV[,1:36])))
+
+# for corrplot need 3 matrices - estimates, lower CI, upper CI
+lower.hourly <- matrix(ci.hourly[,1],6,6)
+upper.hourly <- matrix(ci.hourly[,2],6,6)
+
+test.hourly <- melt(lower.hourly) %>%
+  mutate(p.value = ifelse(value < 0, 1, 0)) %>%
+  select(Var1, Var2, p.value)
+
+p.mat <- diag(6)
+p.mat[cbind(test.hourly$Var1, test.hourly$Var2)] <- p.mat[cbind(test.hourly$Var2, test.hourly$Var1)] <- test.hourly$p.value
+
+colnames(p.mat) <- c("dist", "vel", "velC", "pDist","pDistC","angleC")
+row.names(p.mat) <- c("dist", "vel", "velC", "pDist","pDistC","angleC")
+
+corrplot(behav.matrix.hourly, type = "upper", method = "ellipse", p.mat = p.mat, insig = "blank")
+
+corrplot(behav.matrix.hourly, type = "upper", method = "ellipse", insig = "blank")
