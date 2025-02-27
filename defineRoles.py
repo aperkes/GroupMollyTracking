@@ -6,6 +6,9 @@ import itertools
 from scipy.stats import pearsonr
 from scipy import ndimage
 
+import statsmodels.api as sm
+from statsmodels.formula.api import ols,mixedlm
+
 import warnings
 from tqdm import tqdm
 from datetime import datetime
@@ -413,6 +416,7 @@ def get_meta(csv_file,csv_dir):
     return pi,delta_days
 
 if __name__ == '__main__':
+    out_file = open('test_rpt2.csv','w')
     csv_dir = sys.argv[1]
     pi_dict = {'pi13':0,'pi14':1} #,'pi54':2}
 
@@ -498,29 +502,58 @@ if __name__ == '__main__':
 ## We're using these good indices, working backwards and forwards to define tracklets
 ## Then finding the means, ranking the tracklets, and assigning them to the ranked array.
         if True:
+            len_list = []
             means = [0] * 4
             means_dist = [0] * 4
             means_Pdist = [0] * 4
             n_indices = np.zeros([n_fish,2]).astype(int)
             for i in good_indices:
+                i_list = []
+                n_list = []
+                v_list = []
+                next_nans = []
+                last_nans = []
                 for n in range(n_fish):
                     next_nan = get_next(velocity_array[i:,n])
+                    next_nans.append(next_nan)
                     last_nan = get_next(velocity_array[i::-1,n])
+                    last_nans.append(last_nan)
+                
+                next_nan = min(next_nans)
+                last_nan = min(last_nans)
+                if next_nan - last_nan < 10:
+                    continue
+                len_list.append(next_nan - last_nan)
+                for n in range(n_fish):
+                    #next_nan = get_next(velocity_array[i:,n])
+                    #last_nan = get_next(velocity_array[i::-1,n])
                     tracklet_n = velocity_array[i-last_nan+1:i+next_nan,n]
+                    if np.sum(np.isnan(tracklet_n)) > 1:
+                        import pdb;pdb.set_trace()
                     tracklet_dist = distanceM_array[i-last_nan+1:i+next_nan,n]
                     tracklet_Pdist = pDist_array[i-last_nan+1:i+next_nan,n]
+                    i_list.extend(np.arange(i-last_nan+1,i+next_nan))
+                    n_list.extend([n] * len(tracklet_n))
+                    v_list.extend(tracklet_n)                    
 
-                    means[n] = np.mean(tracklet_n)
-                    means_dist[n] = np.mean(tracklet_dist)
-                    means_Pdist[n] = np.mean(tracklet_Pdist)
+                    means[n] = np.nanmean(tracklet_n)
+                    means_dist[n] = np.nanmean(tracklet_dist)
+                    means_Pdist[n] = np.nanmean(tracklet_Pdist)
 
                     n_indices[n,0] = i-last_nan + 1
                     n_indices[n,1] = i+next_nan
+## Calculate repeatability for this tracklet
+                #print(pi,i)
+## Store repeatability
+                #import pdb;pdb.set_trace()
                 tracklet_rank = np.argsort(means)
                 tracklet_rank_dist = np.argsort(means_dist)
                 tracklet_rank_Pdist = np.argsort(means_Pdist)
                 #tracklet_rank = tracklet_rank_dist
 ## Do you want to sort by one of them, or by all of them? 
+                if len(i_list) <= 10:
+                    #print('##### SKIPPING ####',i)
+                    continue
                 for n_ in range(n_fish):
                     n_v = tracklet_rank[n_]
                     n_c = tracklet_rank_dist[n_]
@@ -538,6 +571,20 @@ if __name__ == '__main__':
                     ranked_pDistarray[i0_p:i1_p,n_] = pDist_array[i0_p:i1_p,n_p] ## This is lowest to highest
                     ranked_distarray[i0_c:i1_c,n_] = distanceM_array[i0_c:i1_c,n_c] ## This is lowest to highest
 
+                if True:
+                    tmp_df = pd.DataFrame(zip(*[i_list,n_list,v_list]),columns=['i','id','vel'])
+                    #cw_lm=ols('vel ~ i + C(id)',data=tmp_df).fit()
+                    #import pdb;pdb.set_trace()
+                    model=mixedlm('vel ~ i',data=tmp_df,groups=tmp_df["id"]).fit()
+                    var_w = model.scale
+                    var_a = model.cov_re.iloc[0,0]
+                    #res = sm.stats.anova_lm(cw_lm,typ=2)
+                    #var_w = res['sum_sq']['C(id)']
+                    #var_a = res['sum_sq']['Residual']
+                    rpt = var_a / (var_a+var_w)
+                    rpt_output = [pi,str(day),str(i),str(rpt),str(var_w),str(var_a),csv_file,'\n']
+                    out_file.write(','.join(rpt_output)) 
+            #print(np.unique(len_list,return_counts=True))
         else:  ## alternatively, you can just go frame by frame, but the above is more reliable and more data.
             for i in range(4):
                 ranked_array[:,0] = velocity_array[np.arange(n_frames),ranked_velocity[:,0]]
@@ -569,7 +616,8 @@ if __name__ == '__main__':
             plt.show()
 
 
-    #import pdb;pdb.set_trace()
+    import pdb;pdb.set_trace()
+    out_file.close()
 
     #pi_speeds11 = median_arrays['pi11']
     #pi_speeds13 = median_arrays['pi13']
