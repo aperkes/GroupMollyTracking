@@ -82,9 +82,13 @@ long_hourly54 <- good_hourly %>%
   filter(Pi %in% piDays[piDays$max >= 54,]$Pi)
 indv.hourly54 <- long_hourly54[long_hourly54$ExpDay <= 54,]
 
-good_hourly <- good_hourly[good_hourly$ExpDay <= 31,]
+indv.hourly54$dist_meanScale <- scale(indv.hourly54$dist_mean)
+indv.hourly54$vel_meanScale <- scale(indv.hourly54$vel_mean)
+indv.hourly54$pDist_meanScale <- scale(indv.hourly54$pDist_mean)
 
-hourly.com <- good_hourly
+indv.hourly54$velC_meanScale <- scale(indv.hourly54$velC_mean)
+indv.hourly54$pDistC_meanScale <- scale(indv.hourly54$pDistC_mean)
+indv.hourly54$angleC_meanScale <- scale(indv.hourly54$angleC_mean)
 
 day1 <- hourly %>%
   filter(ExpDay == 0)
@@ -163,7 +167,7 @@ prior.best <- list(R = list(V = diag(total_days)*0.5,nu = total_days + 0.002),
 
 n_days <- 1
 
-func.ndays.intercepts.het <- function(depVar,df,day_bin=1,prior.cov = prior.id.best) {
+func.ndays.intercepts.het <- function(depVar,df,day_bin=1,prior.cov = prior.id.best,verbose = F) {
   # select only those IDs in that vector & only keep up to obs 70 & make obs 1 = 0
 
   max_days <- max(df$ExpDay) ## It's 0 indexed
@@ -193,7 +197,7 @@ func.ndays.intercepts.het <- function(depVar,df,day_bin=1,prior.cov = prior.id.b
                         pr = T,
                         prior = prior.cov, ## Replace this with prior.id.slope for homo residual variance
                         nitt=310000, burnin = 10000, thin = 200, 
-                        verbose = F)  
+                        verbose = verbose)  
   
   sigma.a0 <- model.het$VCV[,"(Intercept):(Intercept).Pi"]
   sigma.a1 <- model.het$VCV[,"ExpDay:ExpDay.Pi"]
@@ -291,17 +295,26 @@ func.ndays.intercepts.het <- function(depVar,df,day_bin=1,prior.cov = prior.id.b
 ### Get repeatability values ####
 
 ## These two are in the paper proper 
-plots.dist.hourly <- func.ndays.intercepts.het('dist_meanScale',indv.hourly54,n_days,prior.cov=prior.best)
-plots.dist <- func.ndays.intercepts.het('dist_meanScale',indv.long54,n_days,prior.cov=prior.best)
-plots.velC <- func.ndays.intercepts.het('velC_meanScale',indv.long54,n_days,prior.cov=prior.best)
+plots.dist.hourly <- func.ndays.intercepts.het('dist_meanScale',indv.hourly54,n_days,prior.cov=prior.best,verbose=T)
+plots.velC.hourly <- func.ndays.intercepts.het('velC_meanScale',indv.hourly54,n_days,prior.cov=prior.best,verbose=T)
 
 ## These Four are supplemental
-plots.vel <- func.ndays.intercepts.het('vel_meanScale',indv.long54,n_days,prior.cov=prior.best)
-plots.wall_dist <- func.ndays.intercepts.het('pDist_meanScale',indv.long54,n_days,prior.cov=prior.best)
+plots.vel.hourly <- func.ndays.intercepts.het('vel_meanScale',indv.hourly54,n_days,prior.cov=prior.best,verbose=T)
+plots.wall_dist.hourly <- func.ndays.intercepts.het('pDist_meanScale',indv.hourly54,n_days,prior.cov=prior.best,verbose=T)
+plots.wall_distC.hourly <- func.ndays.intercepts.het('pDistC_meanScale',indv.hourly54,n_days,prior.cov=prior.best,verbose=T)
+plots.angleC.hourly <- func.ndays.intercepts.het('angleC_meanScale',indv.hourly54,n_days,prior.cov=prior.best,verbose=T)
+
+## Daily data is good but doesn't make as much sense to use. 
+plots.dist <- func.ndays.intercepts.het('dist_meanScale',indv.long54,n_days,prior.cov=prior.best)
+#plots.velC <- func.ndays.intercepts.het('velC_meanScale',indv.long54,n_days,prior.cov=prior.best)
+
+## These Four are supplemental
+#plots.vel <- func.ndays.intercepts.het('vel_meanScale',indv.long54,n_days,prior.cov=prior.best)
+#plots.wall_dist <- func.ndays.intercepts.het('pDist_meanScale',indv.long54,n_days,prior.cov=prior.best)
 #plots.vel_std <- func.ndays.intercepts('vel_std',df,n_days)
 #plots.velC_scale <- func.ndays.intercepts('velC_scale',df,n_days)
-plots.wall_distC <- func.ndays.intercepts.het('pDistC_meanScale',indv.long54,n_days,prior.cov=prior.best)
-plots.angleC <- func.ndays.intercepts.het('angleC_meanScale',indv.long54,n_days,prior.cov=prior.best)
+#plots.wall_distC <- func.ndays.intercepts.het('pDistC_meanScale',indv.long54,n_days,prior.cov=prior.best)
+#plots.angleC <- func.ndays.intercepts.het('angleC_meanScale',indv.long54,n_days,prior.cov=prior.best)
 #plots.angle_std <- func.ndays.intercepts('polarity_std',df,n_days)
 
 ### Sliding mean plots ####
@@ -344,12 +357,9 @@ sliding.velC <- func.slidingMean('velC_mean',indv.long54,5)
 sliding.velCScale <- func.slidingMean('velC_meanScale',indv.long54,5)
 
 sliding.vel <- func.slidingMean('vel_mean',indv.long54,5)
-#sliding.vel_std <- func.slidingMean('vel_std',indv.long54,5)
-#sliding.velC_scale <- func.slidingMean('velC_scale',indv.long54,5)
 sliding.wall_dist <- func.slidingMean('pDist_mean',indv.long54,5)
 sliding.wall_distC <- func.slidingMean('pDistC_mean',indv.long54,5)
 sliding.angleC <- func.slidingMean('angleC_mean',indv.long54,5)
-#sliding.angle_std <- func.slidingMean('polarity_std',indv.long54,5)
 
 ### Make plot of repeatability over time ####
 
@@ -417,20 +427,25 @@ func.rpt.plot <- function(rpt.data,n_days=1,components=F) {
 
 ## Again first two are for the main body
 #rpt.plot.dist.old <- func.rpt.plot(plots.dist[[5]])
-rpt.plot.dist <- func.rpt.plot(plots.dist[[5]])
-rpt.plot.dist2 <- func.rpt.plot(plots.dist[[5]],components=T)
-rpt.plot.velC <- func.rpt.plot(plots.velC[[5]])
-rpt.plot.velC2 <- func.rpt.plot(plots.velC[[5]],components=T)
+rpt.plot.dist <- func.rpt.plot(plots.dist.hourly[[5]])
+rpt.plot.dist2 <- func.rpt.plot(plots.dist.hourly[[5]],components=T)
+rpt.plot.velC <- func.rpt.plot(plots.velC.hourly[[5]])
+rpt.plot.velC2 <- func.rpt.plot(plots.velC.hourly[[5]],components=T)
 
-rpt.plot.vel <- func.rpt.plot(plots.vel[[5]],components=T)
+rpt.plot.vel <- func.rpt.plot(plots.vel.hourly[[5]],components=T)
 #rpt.plot.vel_std <- func.rpt.plot(plots.vel_std[[5]])
-rpt.plot.wall_dist <- func.rpt.plot(plots.wall_dist[[5]],components=T)
-rpt.plot.wall_distC <- func.rpt.plot(plots.wall_distC[[5]],components=T)
-rpt.plot.angleC <- func.rpt.plot(plots.angleC[[5]],components=T)
+rpt.plot.wall_dist <- func.rpt.plot(plots.wall_dist.hourly[[5]],components=T)
+rpt.plot.wall_distC <- func.rpt.plot(plots.wall_distC.hourly[[5]],components=T)
+rpt.plot.angleC <- func.rpt.plot(plots.angleC.hourly[[5]],components=T)
 #rpt.plot.angle_std <- func.rpt.plot(plots.angle_std[[5]])
 
 #### Run permutation analysis ####
-
+df.foo <- indv.hourly54
+df.foo2 <- df.foo
+df.foo$ShuffledPi <- 0
+for (i in seq(0,max(df.foo$ExpDay))){
+  df.foo2[df.foo2$ExpDay == i,'ShuffledPi'] <- sample(df.foo2[df.foo2$ExpDay == i,'Pi'])
+}
 ## Function to make a shuffled dataframe
 func.shuffle.df <- function(df) {
   
@@ -449,10 +464,15 @@ func.shuffle.df <- function(df) {
 ### Simplified function to just get repeatability, to be run in parallel
 
 ### Simplified function for shuffling and calculating rpt. 
-func.shuffled.rpt.i <- function(i,depVar="dist_mean",day_bin=1,prior.cov=prior.best) {
+func.shuffled.rpt.i <- function(i,depVar="dist_mean",day_bin=1,prior.cov=prior.best,hourly=T) {
   # select only those IDs in that vector & only keep up to obs 70 & make obs 1 = 0
   set.seed(i)
-  df.shuffled <- func.shuffle.df(indv.long54)
+  if (hourly) { 
+    df.shuffled <- func.shuffle.df(indv.hourly54)
+  }
+  else { 
+    df.shuffled <- func.shuffle.df(indv.long54)
+  }
   #depVar <- "dist_mean"
   #day_bin <- 1
   max_days <- 54
@@ -505,12 +525,13 @@ func.shuffled.rpt.i <- function(i,depVar="dist_mean",day_bin=1,prior.cov=prior.b
   rpt <- unlist(rpt)
   return(rpt) }
 
-func.shuffled.rpt.i(1)
+func.shuffled.rpt.i(1,hourly=T)
+
 ## Run for real: 
 ### Set interations:  vvv below. Be sure to set cores  vv. 
-rpt.all <- mclapply(1:50,func.shuffled.rpt.i,mc.cores=5L)
-rpt.mat.all <- do.call("cbind",rpt.all)
-rpt.quants <- rowQuantiles(rpt.mat.all,probs=c(.025,.975))
+#rpt.all <- mclapply(1:50,func.shuffled.rpt.i,mc.cores=5L)
+#rpt.mat.all <- do.call("cbind",rpt.all)
+#rpt.quants <- rowQuantiles(rpt.mat.all,probs=c(.025,.975))
 
 rpt.coh <- mclapply(1:50,func.shuffled.rpt.i,depVar='dist_meanScale',prior.cov=prior.best,mc.cores=5L)
 rpt.mat.coh <- do.call("cbind",rpt.coh)
@@ -556,6 +577,7 @@ ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plots.velC.RPT.jpg',rpt.plot
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plots.velC.sliding.jpg',sliding.velC[[1]],width = 3,height=3,units="in")
 
 ### Supplemental Plots
+
 rpt.plot.dist2_ <- rpt.plot.dist2 + geom_ribbon(aes(ymin = rpt.quants.coh[,1], ymax = rpt.quants.coh[,2]), fill = "lightblue", alpha = 0.5)
 rpt.plot.velC2_ <- rpt.plot.velC2 + geom_ribbon(aes(ymin = rpt.quants.velC[,1], ymax = rpt.quants.velC[,2]), fill = "lightblue", alpha = 0.5)
 
@@ -629,12 +651,10 @@ func.ndays.predict <- function(depVar,df,n_days=5,hourly=F) {
           ExpDay %in% seq(9,max_days,n_days) ~ 10 %% n_days + 1, 
           ExpDay %in% seq(10,max_days,n_days) ~ 11 %% n_days + 1, 
         )) %>%
-      select(Pi, bin, all_of(depVar), obs.day,Hour) %>%
+      select(Pi, bin, all_of(depVar), obs.day, Hour) %>%
       spread(bin, depVar, sep = "")
     }
   else {
-    
-
   df.wide <- df %>%
     mutate(
       obs.day = case_when(
@@ -863,13 +883,11 @@ func.ndays.predict <- function(depVar,df,n_days=5,hourly=F) {
   
   if (hourly) { 
     among.corr <- among.corr[among.corr$Var1 !='Hour',]
-    n_bins <- n_bins - 1
     }
   return(list(plt.week.corr, plt.predict.one,behav.bin.id,n_bins,among.corr,df.wide))
 }
 
-plots.predict.dist <- func.ndays.predict('dist_mean',indv.long54,5)
-plots.predict.dist.hourly <- func.ndays.predict('dist_mean',indv.hourly54,5,hourly=T)
+
 
 ### Binwise correlation
 # There is some weirdness in scaling with MCMCglmm
@@ -889,23 +907,33 @@ for (r in seq(dim(among.corr.d)[1])) {
 }
 cor(among.corr.d$value,among.corr.d$lme.corr)
 
-plots.predict.velC <- func.ndays.predict('velC_mean',indv.long54,5)
-plots.predict.vel <- func.ndays.predict('vel_mean',indv.long54,5)
-
-plots.predict.wall_dist <- func.ndays.predict('pDist_meanScale',indv.long54,5)
-plots.predict.wall_distC <- func.ndays.predict('pDistC_meanScale',indv.long54,5)
-plots.predict.angleC <- func.ndays.predict('angleC_meanScale',indv.long54,5)
-
+if (False) {
+  plots.predict.dist <- func.ndays.predict('dist_mean',indv.long54,5)
+  plots.predict.velC <- func.ndays.predict('velC_mean',indv.long54,5)
+  plots.predict.vel <- func.ndays.predict('vel_mean',indv.long54,5)
+  
+  plots.predict.wall_dist <- func.ndays.predict('pDist_meanScale',indv.long54,5)
+  plots.predict.wall_distC <- func.ndays.predict('pDistC_meanScale',indv.long54,5)
+  plots.predict.angleC <- func.ndays.predict('angleC_meanScale',indv.long54,5)
+} else { 
+  plots.predict.dist <- func.ndays.predict('dist_mean',indv.hourly54,5,hourly=T)
+  plots.predict.velC <- func.ndays.predict('velC_mean',indv.hourly54,5,hourly=T)
+  plots.predict.vel <- func.ndays.predict('vel_mean',indv.hourly54,5,hourly=T)
+  
+  plots.predict.wall_dist <- func.ndays.predict('pDist_meanScale',indv.hourly54,5,hourly=T)
+  plots.predict.wall_distC <- func.ndays.predict('pDistC_meanScale',indv.hourly54,5,hourly=T)
+  plots.predict.angleC <- func.ndays.predict('angleC_meanScale',indv.hourly54,5,hourly=T)
+  }
 #plots.predict.dist.new[[2]]; plots.predict.dist.new[[1]]
 #plots.predict.angleC[[2]]; plots.predict.angleC[[1]]
 ### Building the whole matrix fig is quite complicated
 
 ### Define function to plot massive correlation plot
-func.megafig <- function(plots.predict,hourly=F) {
+func.megafig <- function(plots.predict,plots.beh,hourly=F) {
   
   
   behav.bin.id <- plots.predict[[3]]
-  n_bins <- plots.predict[[4]]
+  n_bins <- plots.predict[[4]] + 1
   among.corr <- plots.predict[[5]]
   
   #id.matrix.bin <- plots.predict.dist[[5]]
@@ -1011,6 +1039,7 @@ megafig.dist
 megafig.dist.hourly <- func.megafig(plots.predict.dist.hourly,T)
 megafig.dist.hourly
 
+megafig.dist <- megafig.dist.hourly
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plot.F3.megafig.dist.jpg',megafig.dist,width = 6.5,height=6.5,units="in")
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plot.F3.megafig.dist.svg',megafig.dist,width = 6.5,height=6.5,units="in")
 
@@ -1080,15 +1109,6 @@ row.names(p.mat) <- c("dist", "vel", "velC", "pDist","pDistC","angleC")
 
 corrplot(behav.matrix.all, type = "upper", method = "ellipse", p.mat = p.mat, insig = "blank")
 
-
-
-hourly.com$dist_meanScale <- scale(hourly.com$dist_mean)
-hourly.com$vel_meanScale <- scale(hourly.com$vel_mean)
-hourly.com$pDist_meanScale <- scale(hourly.com$pDist_mean)
-
-hourly.com$velC_meanScale <- scale(hourly.com$velC_mean)
-hourly.com$pDistC_meanScale <- scale(hourly.com$pDistC_mean)
-hourly.com$angleC_meanScale <- scale(hourly.com$angleC_mean)
 
 behav.hourly.cor <- MCMCglmm(cbind(dist_meanScale, vel_meanScale, velC_meanScale, pDist_meanScale,pDistC_meanScale,angleC_meanScale) ~ trait - 1, 
                           random = ~us(trait):Pi, 
