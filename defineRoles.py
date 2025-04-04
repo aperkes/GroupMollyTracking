@@ -17,6 +17,7 @@ from processTracks import deep_clean_track
 
 import cv2
 
+##NOTE this takes too long, it's going to need to run in parallel
 warnings.filterwarnings('ignore')
 
 #in_file = sys.argv[1]
@@ -419,7 +420,11 @@ def get_df(i,pi):
     i_list = []
     pi_list = []
     n_list = []
+
     v_list = []
+    d_list = []
+    p_list = []
+
     next_nans = []
     last_nans = []
     for n in range(n_fish):
@@ -435,13 +440,18 @@ def get_df(i,pi):
 
     for n in range(n_fish):
         tracklet_n = velocity_array[i-last_nan+1:i+next_nan,n]
+        tracklet_dist = distanceM_array[i-last_nan+1:i+next_nan,n]
+        tracklet_Pdist = pDist_array[i-last_nan+1:i+next_nan,n]
+        #import pdb;pdb.set_trace()
 
         i_list.extend(np.arange(i-last_nan+1,i+next_nan))
         n_list.extend(['.'.join([pi,str(n)])] * len(tracklet_n))
         pi_list.extend([pi] * len(tracklet_n))
         v_list.extend(tracklet_n)                    
+        d_list.extend(tracklet_dist) 
+        p_list.extend(tracklet_Pdist) 
 
-    tmp_df = pd.DataFrame(zip(*[i_list,n_list,pi_list,v_list]),columns=['i','id','pi','vel'])
+    tmp_df = pd.DataFrame(zip(*[i_list,n_list,pi_list,v_list,d_list,p_list]),columns=['i','id','pi','vel','dist','pDist'])
     return tmp_df
 
 if __name__ == '__main__':
@@ -470,7 +480,7 @@ if __name__ == '__main__':
                 in_list = True
         if not in_list:
             pass
-            continue
+            #continue
 
         csv_file = '/'.join([csv_dir,csv_file])
         track_array,track_polar,[n_frames,n_fish,fishIDs] = get_tracks(csv_file)
@@ -604,7 +614,7 @@ if __name__ == '__main__':
                     ranked_distarray[i0_c:i1_c,n_] = distanceM_array[i0_c:i1_c,n_c] ## This is lowest to highest
 
                 if False:
-                    tmp_df = pd.DataFrame(zip(*[i_list,n_list,v_list]),columns=['i','id','vel'])
+                    tmp_df = pd.DataFrame(zip(*[i_list,n_list,v_list]),columns=['i','id','vel','dist','pDist'])
                     #cw_lm=ols('vel ~ i + C(id)',data=tmp_df).fit()
                     #import pdb;pdb.set_trace()
 
@@ -676,13 +686,27 @@ if __name__ == '__main__':
 ## Sort of clunky syntax to get this to work in python, should confirm with R
                 day_r_df["group"] = 1
                 vcf = {'id': "0 + C(id)",'pi':'0 + C(pi)'}
-                model = sm.MixedLM.from_formula("vel ~ i",groups="group",vc_formula=vcf,re_formula="~id",data=day_r_df)
-                mdf = model.fit()
-                res_var = mdf.scale
-                id_var,pi_var = mdf.vcomp
-                id_rpt = id_var / (id_var + res_var)
-                pi_rpt = pi_var / (pi_var + id_var)
-                out_line = ','.join([str(d),str(r),str(id_rpt),str(pi_rpt),str(id_var),str(pi_var),str(res_var),'\n'])
+                #import pdb;pdb.set_trace()
+                
+                out_list = [str(d),str(r)]
+                for b in ['vel','dist','pDist']:
+                    formula_b = b + ' ~ i'
+                    model = sm.MixedLM.from_formula(formula_b,groups="group",vc_formula=vcf,re_formula="~id",data=day_r_df)
+                    mdf = model.fit()
+                    res_var = mdf.scale
+                    id_var,pi_var = mdf.vcomp
+                    id_rpt = id_var / (id_var + res_var)
+                    pi_rpt = pi_var / (pi_var + id_var)
+                    out_list.extend([str(np.round(id_rpt,4)),str(np.round(pi_rpt,4)),str(np.round(id_var,4)),str(np.round(pi_var,4)),str(np.round(res_var,4))])
+                if False:
+                    model = sm.MixedLM.from_formula("vel ~ i",groups="group",vc_formula=vcf,re_formula="~id",data=day_r_df)
+                    mdf = model.fit()
+                    res_var = mdf.scale
+                    id_var,pi_var = mdf.vcomp
+                    id_rpt = id_var / (id_var + res_var)
+                    pi_rpt = pi_var / (pi_var + id_var)
+                    out_line = ','.join([str(d),str(r),str(id_rpt),str(pi_rpt),str(id_var),str(pi_var),str(res_var),'\n'])
+                out_line = ','.join(out_list) + '\n'
                 out_file.write(out_line)
 
     import pdb;pdb.set_trace()
@@ -707,6 +731,8 @@ if __name__ == '__main__':
         axes[1,0].set_ylabel('Speed')
         axes[1,1].set_ylabel('Center Distance')
         axes[1,2].set_ylabel('Median IID by fish')
+        fig.savefig('roles.png',dpi=300)
+        fig.savefig('roles.svg')
     else:
         n_pis = len(median_arrays.keys())
         all_std_v = np.full([n_pis,100],np.nan)
