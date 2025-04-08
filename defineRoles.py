@@ -5,6 +5,7 @@ from matplotlib import pyplot as plt
 import itertools
 from scipy.stats import pearsonr
 from scipy import ndimage
+from joblib import Parallel, delayed
 
 import statsmodels.api as sm
 from statsmodels.formula.api import ols,mixedlm
@@ -26,6 +27,7 @@ warnings.filterwarnings('ignore')
 MAX_VEL = 200
 MAX_THETA =  np.pi/4
 SPLIT_DIST = 30 ## pixels, picks confident tracks. 
+MAX_DAY = 60
 ## Reads in array of xy coordints (frames,2)
 ## spirts out array of polar coordints (frames,2)
 def xy_to_polar(a,center=(400,400)):
@@ -454,9 +456,32 @@ def get_df(i,pi):
     tmp_df = pd.DataFrame(zip(*[i_list,n_list,pi_list,v_list,d_list,p_list]),columns=['i','id','pi','vel','dist','pDist'])
     return tmp_df
 
+def ranked_repeatability(list_of_dfs,d):
+    for r in range(len(list_of_dfs)):
+        if list_of_dfs[r] is not None:
+            day_r_df = list_of_dfs[r]
+## Sort of clunky syntax to get this to work in python, should confirm with R
+            day_r_df["group"] = 1
+            vcf = {'id': "0 + C(id)",'pi':'0 + C(pi)'}
+            #import pdb;pdb.set_trace()
+            
+            out_list = [str(d),str(r)]
+            for b in ['vel','dist','pDist']:
+                formula_b = b + ' ~ i'
+                model = sm.MixedLM.from_formula(formula_b,groups="group",vc_formula=vcf,re_formula="~id",data=day_r_df)
+                mdf = model.fit()
+                res_var = mdf.scale
+                id_var,pi_var = mdf.vcomp
+                #id_rpt = id_var / (id_var + res_var)
+                #pi_rpt = pi_var / (pi_var + id_var)
+                pi_rpt = pi_var / (pi_var + id_var + res_var)
+                id_rpt = id_var / (id_var + res_var + pi_var)
+                out_list.extend([str(np.round(id_rpt,4)),str(np.round(pi_rpt,4)),str(np.round(id_var,4)),str(np.round(pi_var,4)),str(np.round(res_var,4))])
+    return out_list
+
 if __name__ == '__main__':
-    out_file = open('test_rpt3.csv','w')
-    lists_of_dfs = [[None for i in range(10)] for i in range(100)]
+    out_file = open('test_rpt4.csv','w')
+    lists_of_dfs = [[None for i in range(10)] for i in range(MAX_DAY)]
     csv_dir = sys.argv[1]
     pi_dict = {'pi13':0,'pi14':1} #,'pi54':2}
 
@@ -488,6 +513,8 @@ if __name__ == '__main__':
         track_polar[np.isnan(clean_array)] = np.nan
         track_array = clean_array
         pi,day = get_meta(csv_file,csv_dir)
+        if day >= MAX_DAY:
+            continue
         if pi not in median_arrays.keys():
             median_arrays[pi] = []
             median_arrays2[pi] = []
@@ -679,35 +706,51 @@ if __name__ == '__main__':
 
 ## Ok, now we have a whole bunch of df's in lists of lists
     #import pdb;pdb.set_trace()
-    for d in tqdm(range(len(lists_of_dfs))):
-        for r in range(len(lists_of_dfs[d])):
-            if lists_of_dfs[d][r] is not None:
-                day_r_df = lists_of_dfs[d][r]
+    columns = 'day,rank,id_rpt.vel,pi_rpt.vel,id_var.vel,pi_var.vel,res_var.vel,id_rpt.dist,pi_rpt.dist,id_var.dist,pi_var.dist,res_var.dist,id_rpt.pDist,pi_rpt.pDist,id_var.pDist,pi_var.pDist,res_var.pDist'
+    out_file.write(columns + '\n')
+    if False: ## Test for function (something not quite right...)
+        for d in tqdm(range(len(lists_of_dfs))):
+            out_list = ranked_repeatability(lists_of_dfs[d],d)
+            out_line = ','.join(out_list) + '\n'
+            out_file.write(out_line)
+    elif False:
+        ## Annoyingly, something about parallelization fails to converge, but maybe problem above
+        out_lists = Parallel(n_jobs=10)(delayed(ranked_repeatability)(lists_of_dfs[d],d) for d in tqdm(range(len(lists_of_dfs))))
+        for out_list in out_lists:
+            out_line = ','.join(out_list) + '\n'
+            out_file.write(out_line)
+    else:
+        for d in tqdm(range(len(lists_of_dfs))):
+            for r in range(len(lists_of_dfs[d])):
+                if lists_of_dfs[d][r] is not None:
+                    day_r_df = lists_of_dfs[d][r]
 ## Sort of clunky syntax to get this to work in python, should confirm with R
-                day_r_df["group"] = 1
-                vcf = {'id': "0 + C(id)",'pi':'0 + C(pi)'}
-                #import pdb;pdb.set_trace()
-                
-                out_list = [str(d),str(r)]
-                for b in ['vel','dist','pDist']:
-                    formula_b = b + ' ~ i'
-                    model = sm.MixedLM.from_formula(formula_b,groups="group",vc_formula=vcf,re_formula="~id",data=day_r_df)
-                    mdf = model.fit()
-                    res_var = mdf.scale
-                    id_var,pi_var = mdf.vcomp
-                    id_rpt = id_var / (id_var + res_var)
-                    pi_rpt = pi_var / (pi_var + id_var)
-                    out_list.extend([str(np.round(id_rpt,4)),str(np.round(pi_rpt,4)),str(np.round(id_var,4)),str(np.round(pi_var,4)),str(np.round(res_var,4))])
-                if False:
-                    model = sm.MixedLM.from_formula("vel ~ i",groups="group",vc_formula=vcf,re_formula="~id",data=day_r_df)
-                    mdf = model.fit()
-                    res_var = mdf.scale
-                    id_var,pi_var = mdf.vcomp
-                    id_rpt = id_var / (id_var + res_var)
-                    pi_rpt = pi_var / (pi_var + id_var)
-                    out_line = ','.join([str(d),str(r),str(id_rpt),str(pi_rpt),str(id_var),str(pi_var),str(res_var),'\n'])
-                out_line = ','.join(out_list) + '\n'
-                out_file.write(out_line)
+                    day_r_df["group"] = 1
+                    vcf = {'id': "0 + C(id)",'pi':'0 + C(pi)'}
+                    #import pdb;pdb.set_trace()
+                    
+                    out_list = [str(d),str(r)]
+                    for b in ['vel','dist','pDist']:
+                        formula_b = b + ' ~ i'
+                        model = sm.MixedLM.from_formula(formula_b,groups="group",vc_formula=vcf,re_formula="~id",data=day_r_df)
+                        mdf = model.fit()
+                        res_var = mdf.scale
+                        id_var,pi_var = mdf.vcomp
+                        #id_rpt = id_var / (id_var + res_var)
+                        #pi_rpt = pi_var / (pi_var + id_var)
+                        pi_rpt = pi_var / (pi_var + id_var + res_var)
+                        id_rpt = id_var / (id_var + res_var + pi_var)
+                        out_list.extend([str(np.round(id_rpt,4)),str(np.round(pi_rpt,4)),str(np.round(id_var,4)),str(np.round(pi_var,4)),str(np.round(res_var,4))])
+                    if False:
+                        model = sm.MixedLM.from_formula("vel ~ i",groups="group",vc_formula=vcf,re_formula="~id",data=day_r_df)
+                        mdf = model.fit()
+                        res_var = mdf.scale
+                        id_var,pi_var = mdf.vcomp
+                        id_rpt = id_var / (id_var + res_var)
+                        pi_rpt = pi_var / (pi_var + id_var)
+                        out_line = ','.join([str(d),str(r),str(id_rpt),str(pi_rpt),str(id_var),str(pi_var),str(res_var),'\n'])
+                    out_line = ','.join(out_list) + '\n'
+                    out_file.write(out_line)
 
     import pdb;pdb.set_trace()
     out_file.close()

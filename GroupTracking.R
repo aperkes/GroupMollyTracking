@@ -908,7 +908,7 @@ for (r in seq(dim(among.corr.d)[1])) {
 cor(among.corr.d$value,among.corr.d$lme.corr)
 
 if (False) {
-  plots.predict.dist <- func.ndays.predict('dist_mean',indv.long54,5)
+  plots.predict.dist2 <- func.ndays.predict('dist_mean',indv.long54,5)
   plots.predict.velC <- func.ndays.predict('velC_mean',indv.long54,5)
   plots.predict.vel <- func.ndays.predict('vel_mean',indv.long54,5)
   
@@ -933,7 +933,7 @@ func.megafig <- function(plots.predict,plots.beh,hourly=F) {
   
   
   behav.bin.id <- plots.predict[[3]]
-  n_bins <- plots.predict[[4]] + 1
+  n_bins <- plots.predict[[4]]
   among.corr <- plots.predict[[5]]
   
   #id.matrix.bin <- plots.predict.dist[[5]]
@@ -1033,7 +1033,8 @@ func.megafig <- function(plots.predict,plots.beh,hourly=F) {
 
 ### Main fgure
 
-megafig.dist <- func.megafig(plots.predict.dist)
+megafig.dist <- func.megafig(plots.predict.dist,T)
+megafig.dist <- func.megafig(plots.predict.dist2)
 megafig.dist
 
 megafig.dist.hourly <- func.megafig(plots.predict.dist.hourly,T)
@@ -1041,33 +1042,40 @@ megafig.dist.hourly
 
 megafig.dist <- megafig.dist.hourly
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plot.F3.megafig.dist.jpg',megafig.dist,width = 6.5,height=6.5,units="in")
+ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plot.F3.megafig.distSig.jpg',plots.predict.dist[[1]],width = 6.5,height=6.5,units="in")
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plot.F3.megafig.dist.svg',megafig.dist,width = 6.5,height=6.5,units="in")
 
 ## Supplemental Figures
-megafig.vel <- func.megafig(plots.predict.vel)
+megafig.vel <- func.megafig(plots.predict.vel,T)
 megafig.vel
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.vel.jpg',megafig.vel,width = 6.5,height=6.5,units="in")
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.vel.svg',megafig.vel,width = 6.5,height=6.5,units="in")
+ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plot.F3.megafig.velSig.jpg',plots.predict.vel[[1]],width = 6.5,height=6.5,units="in")
 
 megafig.velC <- func.megafig(plots.predict.velC)
 
 megafig.velC
 
 
-ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.velC.jpg',megafig.vel,width = 6.5,height=6.5,units="in")
-ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.velC.svg',megafig.vel,width = 6.5,height=6.5,units="in")
+ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.velC.jpg',megafig.velC,width = 6.5,height=6.5,units="in")
+ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.velC.svg',megafig.velC,width = 6.5,height=6.5,units="in")
+ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plot.F3.megafig.velCsig.jpg',plots.predict.velC[[1]],width = 6.5,height=6.5,units="in")
+
 
 megafig.pDist <- func.megafig(plots.predict.wall_dist)
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.pDist.jpg',megafig.vel,width = 6.5,height=6.5,units="in")
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.pDist.svg',megafig.vel,width = 6.5,height=6.5,units="in")
+ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plot.F3.megafig.pDistSig.jpg',plots.predict.wall_dist[[1]],width = 6.5,height=6.5,units="in")
 
 megafig.pDistC <- func.megafig(plots.predict.wall_distC)
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.pDistC.jpg',megafig.pDistC,width = 6.5,height=6.5,units="in")
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.pDistC.svg',megafig.pDistC,width = 6.5,height=6.5,units="in")
+ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plot.F3.megafig.pDistSig.jpg',plots.predict.wall_distC[[1]],width = 6.5,height=6.5,units="in")
 
 megafig.angleC <- func.megafig(plots.predict.angleC)
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.angleC.jpg',megafig.angleC,width = 6.5,height=6.5,units="in")
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.angleC.svg',megafig.angleC,width = 6.5,height=6.5,units="in")
+ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plot.F3.megafig.angleCSig.jpg',plots.predict.angleC[[1]],width = 6.5,height=6.5,units="in")
 
 
 ### I think the last thing I need is to check correlation among behaviors. 
@@ -1142,6 +1150,70 @@ p.mat[cbind(test.hourly$Var1, test.hourly$Var2)] <- p.mat[cbind(test.hourly$Var2
 colnames(p.mat) <- c("dist", "vel", "velC", "pDist","pDistC","angleC")
 row.names(p.mat) <- c("dist", "vel", "velC", "pDist","pDistC","angleC")
 
-corrplot(behav.matrix.hourly, type = "upper", method = "ellipse", p.mat = p.mat, insig = "blank")
+corrplot(behav.matrix.hourly, type = "upper", method = "number", p.mat = p.mat, insig = "blank")
 
-corrplot(behav.matrix.hourly, type = "upper", method = "ellipse", insig = "blank")
+corrplot(behav.matrix.hourly, type = "upper", method = "number", insig = "blank")
+
+### Check repeatability over time
+df.rpt <- read.csv('test_rpt4.csv')
+colnames(df.rpt)
+
+func.decomp.var <- function(df = df.rpt,beh='vel') {
+
+  form.rid <- as.formula(paste('id_rpt.',beh,"~ day",sep=""))
+  form.rpi <- as.formula(paste('pi_rpt.',beh,"~ day",sep=""))
+  form.vid <- as.formula(paste('res_var.',beh,"~ day",sep=""))
+  form.vgr <- as.formula(paste('id_var.',beh,"~ day",sep=""))
+  form.vpop <- as.formula(paste('pi_var.',beh,"~ day",sep=""))
+  
+  rpt.id <- lme(form.rid,random=~1|rank,data=df)
+  rpt.pi <- lme(form.rpi,random=~1|rank,data=df)
+  var.id <- lme(form.vid,random=~1|rank,data=df)
+  var.group <- lme(form.vgr,random=~1|rank,data=df)
+  var.pop <- lme(form.vpop,random=~1|rank,data=df)
+
+  print(summary(var.id))
+  print(summary(var.group))
+  print(summary(var.pop))
+  print(summary(rpt.id))
+  print(summary(rpt.pi))
+  
+  df$rpt.id <- df[,paste('id_rpt.',beh,sep='')]
+  df$rpt.pi <- df[,paste('pi_rpt.',beh,sep='')]
+  multi_scale <- max(c(sd(df[,paste('res_var.',beh,sep='')]),
+                        sd(df[,paste('res_var.',beh,sep='')]),
+                        sd(df[,paste('res_var.',beh,sep='')]))) * 4
+  df$res_var.behScale <- df[,paste('res_var.',beh,sep='')] / multi_scale
+  df$id_var.behScale <- df[,paste('id_var.',beh,sep='')] / multi_scale
+  df$pi_var.behScale <- df[,paste('pi_var.',beh,sep='')] / multi_scale
+  #df$res_var.behScale <- scale(df[,paste('res_var.',beh,sep='')]) + 0.5
+  #df$id_var.behScale <- scale(df[,paste('id_var.',beh,sep='')]) + 0.5
+  #df$pi_var.behScale <- scale(df[,paste('pi_var.',beh,sep='')]) + 0.5
+  
+  plot.beh <- ggplot(data=df,aes(day)) + 
+    geom_point(aes(y=res_var.behScale,color='red'),alpha=0.05) +
+    geom_smooth(aes(y=res_var.behScale,color='red'),alpha=0.2) +
+    
+    geom_point(aes(y=id_var.behScale,color='yellow'),alpha=0.05) +
+    geom_smooth(aes(y=id_var.behScale,color='yellow'),alpha=0.2) +
+    
+    geom_point(aes(y=pi_var.behScale,color='blue'),alpha=0.05) + 
+    geom_smooth(aes(y=pi_var.behScale,color='blue'),alpha=0.2) +
+    
+    geom_point(aes(y=rpt.id,color='orange'),alpha=0.05) + 
+    geom_smooth(aes(y=rpt.id,color='orange'),alpha=1) + 
+    
+    geom_point(aes(y=rpt.pi,color='green'),alpha=0.05) +
+    geom_smooth(aes(y=rpt.pi,color='green'),alpha=1) +
+    ylim(0,1) +
+    scale_color_identity(guide='legend') + 
+    #scale_color_manual(values = c('red','yellow','blue','orange','green'), 
+    #                   labels=c('Var w.i. individual','Var w.i. group',
+    #                            'Var w.i. pop','RPT (ind:group)','RPT (group:population)')) +
+    theme_classic()
+    
+return(plot.beh)
+}
+func.decomp.var(beh='vel')
+func.decomp.var(beh='dist')
+func.decomp.var(beh='pDist')
