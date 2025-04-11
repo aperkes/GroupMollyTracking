@@ -1154,41 +1154,128 @@ corrplot(behav.matrix.hourly, type = "upper", method = "number", p.mat = p.mat, 
 
 corrplot(behav.matrix.hourly, type = "upper", method = "number", insig = "blank")
 
-### Check repeatability over time
-df.rpt <- read.csv('test_rpt4.csv')
-colnames(df.rpt)
+## Confirm that std decreases over time
+df.var <- read.csv('var_df.csv')
+df.var <- drop_na(df.var)
+res.velVar <- lme(vel.std ~ day,random=~1|pi,data=df.var)
+summary(res.velVar)
 
-func.decomp.var <- function(df = df.rpt,beh='vel') {
+res.pDistVar <- lme(pDist.std ~ day,random=~1|pi,data=df.var)
+summary(res.pDistVar)
 
-  form.rid <- as.formula(paste('id_rpt.',beh,"~ day",sep=""))
-  form.rpi <- as.formula(paste('pi_rpt.',beh,"~ day",sep=""))
-  form.vid <- as.formula(paste('res_var.',beh,"~ day",sep=""))
-  form.vgr <- as.formula(paste('id_var.',beh,"~ day",sep=""))
-  form.vpop <- as.formula(paste('pi_var.',beh,"~ day",sep=""))
+res.cohVar <- lme(coh.std ~ day,random=~1|pi,data=df.var)
+summary(res.cohVar)
+
+## Now to the main event: individual repeatability over time
+
+## This is done in parallel, but it's fast enough. 
+
+df.ranked <- read.csv('ranked_df.csv')
+#df.ranked$day <- as.factor(df.ranked$day)
+df.ranked$rank <- as.factor(df.ranked$rank)
+df.ranked$pid <- as.factor(df.ranked$pi)
+
+func.subRPT <- function(d,r,beh='vel') {
+  print(paste(d,r))
+  sub.ranked <- df.ranked[df.ranked$rank == r,]
+  sub.ranked <- sub.ranked[sub.ranked$day == d,]
+  print(sub.ranked)
+  form = as.formula(paste(beh,"~ 1 + (1|pid) + (1|id)",sep=""))
+  #res.rankDay <- lme(vel ~ 1,random=list(~1|pid, ~1|id),data=sub.ranked)
+  res.rankDay <- lmer(form,data=sub.ranked)
+  vcomps <- as.data.frame(VarCorr(res.rankDay))
+  sdev.pi <- vcomps[2,5]
+  sdev.id <- vcomps[1,5]
+  sdev.res <- vcomps[3,5]
+  rpt.id <- sdev.id / (sdev.id + sdev.res)
+  rpt.pi <- sdev.pi / (sdev.pi + sdev.pi + sdev.res)
+  return(list(sdev.id,sdev.pi,sdev.res,rpt.id,rpt.pi))
+}
+
+func.rankRPT <- function(r,beh='vel') {
+  many_rpts <- sapply(0:max(df.ranked$day),func.subRPT,r=r,beh=beh)
+}
+
+
+func.build.StatDf <- function(beh='vel') {
+  var_mats <- mclapply(0:9,func.rankRPT,beh=beh,mc.cores=10L)
+  
+  ## Unravel things into dataframe, 
+  ## there must be some better way to do this
+  rank_list <- list()
+  day_list <- list()
+  stat_list <- list()
+  
+  n_rows <- 10 * 55
+  stacked_matrix <- matrix(NA,nrow = n_rows,ncol = 5,
+                           dimnames=list(NULL,c(paste('sdev.id',beh,sep='.'),
+                                                paste('sdev.pi',beh,sep='.'),
+                                                paste('sdev.res',beh,sep='.'),
+                                                paste('rpt.id',beh,sep='.'),
+                                                paste('rpt.pi',beh,sep='.'))))
+
+  
+  for (r in seq(10)) {
+    rank_matrix <- var_mats[[r]]
+    for (d in seq(0,54)) {
+        rank_list <- append(rank_list,list(r))
+        day_list <- append(day_list,list(d))
+        var_stats <- rank_matrix[,d+1]
+        i <- (r-1) * 55 + d + 1
+        stacked_matrix[i,] <- unlist(var_stats)
+  
+    }
+  }
+  stat_df <- as.data.frame(stacked_matrix)
+  stat_df$rank <- unlist(rank_list)
+  stat_df$day <- unlist(day_list)
+
+return(stat_df)
+}
+
+rpt.df.vel <- func.build.StatDf('vel')
+rpt.df.pDist <- func.build.StatDf('pDist')
+rpt.df.dist <- func.build.StatDf('dist')
+## Okay, now we have a dfs of these stats! 
+
+func.decomp.var <- function(df = df.rpt.vel,beh='vel') {
+  
+  form.rid <- as.formula(paste('rpt.id.',beh,"~ day",sep=""))
+  form.rpi <- as.formula(paste('rpt.pi.',beh,"~ day",sep=""))
+  form.vid <- as.formula(paste('sdev.res.',beh,"~ day",sep=""))
+  form.vgr <- as.formula(paste('sdev.id.',beh,"~ day",sep=""))
+  form.vpop <- as.formula(paste('sdev.pi.',beh,"~ day",sep=""))
   
   rpt.id <- lme(form.rid,random=~1|rank,data=df)
   rpt.pi <- lme(form.rpi,random=~1|rank,data=df)
   var.id <- lme(form.vid,random=~1|rank,data=df)
   var.group <- lme(form.vgr,random=~1|rank,data=df)
   var.pop <- lme(form.vpop,random=~1|rank,data=df)
-
+  
+  print('###### Residual Variance:')
   print(summary(var.id))
+  
+  print('###### Group Variance:')
   print(summary(var.group))
+  
+  print('###### Population Variance:')
   print(summary(var.pop))
+  
+  print('###### Individual-level Repeatability:')
   print(summary(rpt.id))
+  
+  print('###### Group-level Repeatability:')
   print(summary(rpt.pi))
   
-  df$rpt.id <- df[,paste('id_rpt.',beh,sep='')]
-  df$rpt.pi <- df[,paste('pi_rpt.',beh,sep='')]
-  multi_scale <- max(c(sd(df[,paste('res_var.',beh,sep='')]),
-                        sd(df[,paste('res_var.',beh,sep='')]),
-                        sd(df[,paste('res_var.',beh,sep='')]))) * 4
-  df$res_var.behScale <- df[,paste('res_var.',beh,sep='')] / multi_scale
-  df$id_var.behScale <- df[,paste('id_var.',beh,sep='')] / multi_scale
-  df$pi_var.behScale <- df[,paste('pi_var.',beh,sep='')] / multi_scale
-  #df$res_var.behScale <- scale(df[,paste('res_var.',beh,sep='')]) + 0.5
-  #df$id_var.behScale <- scale(df[,paste('id_var.',beh,sep='')]) + 0.5
-  #df$pi_var.behScale <- scale(df[,paste('pi_var.',beh,sep='')]) + 0.5
+  df$rpt.id <- df[,paste('rpt.id.',beh,sep='')]
+  df$rpt.pi <- df[,paste('rpt.pi.',beh,sep='')]
+  multi_scale <- max(c(mean(df[,paste('sdev.res.',beh,sep='')]),
+                       mean(df[,paste('sdev.id.',beh,sep='')]),
+                       mean(df[,paste('sdev.pi.',beh,sep='')]))) * 2
+  df$res_var.behScale <- df[,paste('sdev.res.',beh,sep='')] / multi_scale
+  df$id_var.behScale <- df[,paste('sdev.id.',beh,sep='')] / multi_scale
+  df$pi_var.behScale <- df[,paste('sdev.pi.',beh,sep='')] / multi_scale
+
   
   plot.beh <- ggplot(data=df,aes(day)) + 
     geom_point(aes(y=res_var.behScale,color='red'),alpha=0.05) +
@@ -1211,9 +1298,10 @@ func.decomp.var <- function(df = df.rpt,beh='vel') {
     #                   labels=c('Var w.i. individual','Var w.i. group',
     #                            'Var w.i. pop','RPT (ind:group)','RPT (group:population)')) +
     theme_classic()
-    
-return(plot.beh)
+  
+  return(plot.beh)
 }
-func.decomp.var(beh='vel')
-func.decomp.var(beh='dist')
-func.decomp.var(beh='pDist')
+func.decomp.var(rpt.df.vel,beh='vel')
+func.decomp.var(rpt.df.dist,beh='dist')
+func.decomp.var(rpt.df.pDist,beh='pDist')
+
