@@ -418,7 +418,7 @@ def get_meta(csv_file,csv_dir):
 
     return pi,delta_days
 
-def get_df(i,pi):
+def get_df(i,pi,day,rank):
     i_list = []
     pi_list = []
     n_list = []
@@ -452,8 +452,9 @@ def get_df(i,pi):
         v_list.extend(tracklet_n)                    
         d_list.extend(tracklet_dist) 
         p_list.extend(tracklet_Pdist) 
-
-    tmp_df = pd.DataFrame(zip(*[i_list,n_list,pi_list,v_list,d_list,p_list]),columns=['i','id','pi','vel','dist','pDist'])
+    day_list = [day for i in i_list]
+    rank_list = [rank for i in i_list]
+    tmp_df = pd.DataFrame(zip(*[rank_list,i_list,n_list,day_list,pi_list,v_list,d_list,p_list]),columns=['rank','f_index','id','day','pi','vel','dist','pDist'])
     return tmp_df
 
 def ranked_repeatability(list_of_dfs,d):
@@ -482,6 +483,7 @@ def ranked_repeatability(list_of_dfs,d):
 if __name__ == '__main__':
     out_file = open('test_rpt4.csv','w')
     lists_of_dfs = [[None for i in range(10)] for i in range(MAX_DAY)]
+    global_df = []
     csv_dir = sys.argv[1]
     pi_dict = {'pi13':0,'pi14':1} #,'pi54':2}
 
@@ -497,6 +499,8 @@ if __name__ == '__main__':
 
     for csv_file in tqdm(sorted(os.listdir(csv_dir))):
         if 'GR' in csv_file:
+            continue
+        if 'csv' not in csv_file:
             continue
         in_list = False
         for p in pi_dict.keys():
@@ -642,6 +646,7 @@ if __name__ == '__main__':
 
                 if False:
                     tmp_df = pd.DataFrame(zip(*[i_list,n_list,v_list]),columns=['i','id','vel','dist','pDist'])
+
                     #cw_lm=ols('vel ~ i + C(id)',data=tmp_df).fit()
                     #import pdb;pdb.set_trace()
 
@@ -666,13 +671,12 @@ if __name__ == '__main__':
             top_Is = np.array(len_list_i)[np.argsort(len_list)[::-1]][:10]
             for i_ in range(len(top_Is)):
                 i = top_Is[i_]
-                tmp_df = get_df(i,pi)
+                tmp_df = get_df(i,pi,day,i_)
                 if lists_of_dfs[day][i_] is None:
                     lists_of_dfs[day][i_] = tmp_df
                 else:
                     #import pdb;pdb.set_trace()
                     lists_of_dfs[day][i_] = pd.concat([lists_of_dfs[day][i_],tmp_df],ignore_index=True)
-
         else:  ## alternatively, you can just go frame by frame, but the above is more reliable and more data.
             for i in range(4):
                 ranked_array[:,0] = velocity_array[np.arange(n_frames),ranked_velocity[:,0]]
@@ -706,6 +710,11 @@ if __name__ == '__main__':
 
 ## Ok, now we have a whole bunch of df's in lists of lists
     #import pdb;pdb.set_trace()
+## First, save them as a single df in case we want to use that.
+    combined_dfs = [pd.concat(l,ignore_index=True) for l in lists_of_dfs]
+    global_df = pd.concat(combined_dfs,ignore_index=True) 
+    global_df.to_csv('ranked_df.csv',index=False)
+
     columns = 'day,rank,id_rpt.vel,pi_rpt.vel,id_var.vel,pi_var.vel,res_var.vel,id_rpt.dist,pi_rpt.dist,id_var.dist,pi_var.dist,res_var.dist,id_rpt.pDist,pi_rpt.pDist,id_var.pDist,pi_var.pDist,res_var.pDist'
     out_file.write(columns + '\n')
     if False: ## Test for function (something not quite right...)
@@ -719,9 +728,13 @@ if __name__ == '__main__':
         for out_list in out_lists:
             out_line = ','.join(out_list) + '\n'
             out_file.write(out_line)
+    elif True:
+        print('just do it post!')
     else:
+        import pdb;pdb.set_trace()
         for d in tqdm(range(len(lists_of_dfs))):
             for r in range(len(lists_of_dfs[d])):
+
                 if lists_of_dfs[d][r] is not None:
                     day_r_df = lists_of_dfs[d][r]
 ## Sort of clunky syntax to get this to work in python, should confirm with R
@@ -752,13 +765,13 @@ if __name__ == '__main__':
                     out_line = ','.join(out_list) + '\n'
                     out_file.write(out_line)
 
-    import pdb;pdb.set_trace()
+    #import pdb;pdb.set_trace()
     out_file.close()
 
     #pi_speeds11 = median_arrays['pi11']
     #pi_speeds13 = median_arrays['pi13']
     n_plots = len(median_arrays.keys())
-    if True:
+    if False:
         fig,axes = plt.subplots(n_plots,3,sharex=True)
         for k_ in range(len(median_arrays.keys())):
             k = list(median_arrays.keys())[k_]
@@ -782,6 +795,7 @@ if __name__ == '__main__':
         all_std_p = np.full([n_pis,100],np.nan)
         all_std_c = np.full([n_pis,100],np.nan)
         fig,(ax0,ax1,ax2) = plt.subplots(1,3,sharex=True)
+        var_lists = []
         for k_ in range(len(median_arrays.keys())):
             k = list(median_arrays.keys())[k_]
             xs = np.arange(len(median_arrays[k]))
@@ -791,11 +805,14 @@ if __name__ == '__main__':
             all_std_v[k_,:len(xs)] = pi_std_v
             all_std_p[k_,:len(xs)] = pi_std_p
             all_std_c[k_,:len(xs)] = pi_std_c
-
+            for x in xs:
+                var_list = [k,x,pi_std_v[x],pi_std_p[x],pi_std_c[x]]
+                var_lists.append(var_list)
             ax0.plot(pi_std_v,color='black',alpha=0.1)
             ax1.plot(pi_std_p,color='black',alpha=0.1)
             ax2.plot(pi_std_c,color='black',alpha=0.1)
 
+        var_df = pd.DataFrame(var_lists,columns=['pi','day','vel.std','pDist.std','coh.std'])
         ax0.plot(np.nanmean(all_std_v,axis=0),color='black')
         ax1.plot(np.nanmean(all_std_p,axis=0),color='black')
         ax2.plot(np.nanmean(all_std_c,axis=0),color='black')
@@ -807,4 +824,6 @@ if __name__ == '__main__':
         ax0.set_ylabel('Std Speed')
         ax1.set_ylabel('Std Center Distance')
         ax2.set_ylabel('Std IID')
+    fig.tight_layout()
     plt.show()
+    var_df.to_csv('var_df.csv',index=False)
