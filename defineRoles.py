@@ -2,6 +2,9 @@ import pandas as pd
 import sys,os
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib.widgets import Slider
+from matplotlib import colormaps
+
 import itertools
 from scipy.stats import pearsonr
 from scipy import ndimage
@@ -418,7 +421,7 @@ def get_meta(csv_file,csv_dir):
 
     return pi,delta_days
 
-def get_df(i,pi,day,rank):
+def get_df(i,pi,day,rank,plot_me=False):
     i_list = []
     pi_list = []
     n_list = []
@@ -439,6 +442,26 @@ def get_df(i,pi,day,rank):
     last_nan = min(last_nans)
     #if next_nan - last_nan < 10:
     #    continue
+
+    cmap = colormaps.get_cmap('tab10')
+    if plot_me:
+        def update(i):
+            for p in range(4):
+                points[p].set_data([clean_array[i,p,0],clean_array[i,p,1]])
+            fig.canvas.draw()
+
+        fig,ax = plt.subplots()
+        axSlid = fig.add_axes([0.2,0.02,0.6,0.03])
+        slider = Slider(ax=axSlid,label='index',valmin=i-last_nan+1,valmax=i+next_nan-1,valinit=i,valstep=1)
+        points = []
+        lines = []
+        for p in range(4):
+            point, = ax.plot([],[],marker='o',c=cmap(p))
+            line, = ax.plot(clean_array[i-last_nan+1:i+next_nan,p,0],clean_array[i-last_nan+1:i+next_nan,p,1],c=cmap(p))
+            points.append(point)
+            lines.append(line)
+        slider.on_changed(update)
+        plt.show()
 
     for n in range(n_fish):
         tracklet_n = velocity_array[i-last_nan+1:i+next_nan,n]
@@ -513,7 +536,7 @@ if __name__ == '__main__':
 
         csv_file = '/'.join([csv_dir,csv_file])
         track_array,track_polar,[n_frames,n_fish,fishIDs] = get_tracks(csv_file)
-        clean_array,velocity_array,distance_array = deep_clean_track(track_array)
+        clean_array,velocity_array,distance_array = deep_clean_track(track_array,min_dist=30,drop_close=True)
         track_polar[np.isnan(clean_array)] = np.nan
         track_array = clean_array
         pi,day = get_meta(csv_file,csv_dir)
@@ -644,55 +667,16 @@ if __name__ == '__main__':
                     ranked_pDistarray[i0_p:i1_p,n_] = pDist_array[i0_p:i1_p,n_p] ## This is lowest to highest
                     ranked_distarray[i0_c:i1_c,n_] = distanceM_array[i0_c:i1_c,n_c] ## This is lowest to highest
 
-                if False:
-                    tmp_df = pd.DataFrame(zip(*[i_list,n_list,v_list]),columns=['i','id','vel','dist','pDist'])
-
-                    #cw_lm=ols('vel ~ i + C(id)',data=tmp_df).fit()
-                    #import pdb;pdb.set_trace()
-
-                    model=mixedlm('vel ~ i',data=tmp_df,groups=tmp_df["id"])
-                    try:
-                        model = model.fit()
-                    except:
-## There is a weird error with convergence, seems to be computer specific
-                        model = model.fit(method=['bfgs'])
-                        print('model did not converge for index',i,'using bfgs')
-                        #import pdb;pdb.set_trace()
-                    var_w = model.scale
-                    var_a = model.cov_re.iloc[0,0]
-                    #res = sm.stats.anova_lm(cw_lm,typ=2)
-                    #var_w = res['sum_sq']['C(id)']
-                    #var_a = res['sum_sq']['Residual']
-                    rpt = var_a / (var_a+var_w)
-                    rpt_output = [pi,str(day),str(i),str(rpt),str(var_w),str(var_a),csv_file,'\n']
-                    out_file.write(','.join(rpt_output)) 
-            #import pdb;pdb.set_trace()
-            #print(np.unique(len_list,return_counts=True))
             top_Is = np.array(len_list_i)[np.argsort(len_list)[::-1]][:10]
             for i_ in range(len(top_Is)):
                 i = top_Is[i_]
-                tmp_df = get_df(i,pi,day,i_)
+                tmp_df = get_df(i,pi,day,i_,plot_me = True)
                 if lists_of_dfs[day][i_] is None:
                     lists_of_dfs[day][i_] = tmp_df
                 else:
                     #import pdb;pdb.set_trace()
                     lists_of_dfs[day][i_] = pd.concat([lists_of_dfs[day][i_],tmp_df],ignore_index=True)
-        else:  ## alternatively, you can just go frame by frame, but the above is more reliable and more data.
-            for i in range(4):
-                ranked_array[:,0] = velocity_array[np.arange(n_frames),ranked_velocity[:,0]]
-                ranked_array[:,1] = velocity_array[np.arange(n_frames),ranked_velocity[:,1]]
-                ranked_array[:,2] = velocity_array[np.arange(n_frames),ranked_velocity[:,2]]
-                ranked_array[:,3] = velocity_array[np.arange(n_frames),ranked_velocity[:,3]]
-            ranked_array[drop_count > 0] = np.nan
-## Quick and dirty. I might need to speed this up if it's too slow. 
-        if False:
-            fig,ax = plt.subplots()
-            ax.hist(ranked_array[:,0],alpha=0.5)
-            ax.hist(ranked_array[:,1],alpha=0.5)
-            ax.hist(ranked_array[:,2],alpha=0.5)
-            ax.hist(ranked_array[:,3],alpha=0.5)
-            plt.show()
-
+            #import pdb;pdb.set_trace()
         median_speeds = np.nanmedian(ranked_array,axis=0)
         median_pdists = np.nanmedian(ranked_pDistarray,axis=0)
         median_dists = np.nanmedian(ranked_distarray,axis=0)
@@ -700,13 +684,6 @@ if __name__ == '__main__':
         median_arrays[pi].append(median_speeds)
         median_arrays2[pi].append(median_pdists)
         median_arrays3[pi].append(median_dists)
-        
-        if False:
-            fig,ax = plt.subplots()
-            ax.plot(velocity_array[:,0],color='black',alpha=0.5)
-            ax.plot(smooth_vel[:,0],color='red',linestyle=':')
-            plt.show()
-
 
 ## Ok, now we have a whole bunch of df's in lists of lists
     #import pdb;pdb.set_trace()
@@ -715,115 +692,45 @@ if __name__ == '__main__':
     global_df = pd.concat(combined_dfs,ignore_index=True) 
     global_df.to_csv('ranked_df.csv',index=False)
 
-    columns = 'day,rank,id_rpt.vel,pi_rpt.vel,id_var.vel,pi_var.vel,res_var.vel,id_rpt.dist,pi_rpt.dist,id_var.dist,pi_var.dist,res_var.dist,id_rpt.pDist,pi_rpt.pDist,id_var.pDist,pi_var.pDist,res_var.pDist'
-    out_file.write(columns + '\n')
-    if False: ## Test for function (something not quite right...)
-        for d in tqdm(range(len(lists_of_dfs))):
-            out_list = ranked_repeatability(lists_of_dfs[d],d)
-            out_line = ','.join(out_list) + '\n'
-            out_file.write(out_line)
-    elif False:
-        ## Annoyingly, something about parallelization fails to converge, but maybe problem above
-        out_lists = Parallel(n_jobs=10)(delayed(ranked_repeatability)(lists_of_dfs[d],d) for d in tqdm(range(len(lists_of_dfs))))
-        for out_list in out_lists:
-            out_line = ','.join(out_list) + '\n'
-            out_file.write(out_line)
-    elif True:
-        print('just do it post!')
-    else:
-        import pdb;pdb.set_trace()
-        for d in tqdm(range(len(lists_of_dfs))):
-            for r in range(len(lists_of_dfs[d])):
+    print('just do it post!')
 
-                if lists_of_dfs[d][r] is not None:
-                    day_r_df = lists_of_dfs[d][r]
-## Sort of clunky syntax to get this to work in python, should confirm with R
-                    day_r_df["group"] = 1
-                    vcf = {'id': "0 + C(id)",'pi':'0 + C(pi)'}
-                    #import pdb;pdb.set_trace()
-                    
-                    out_list = [str(d),str(r)]
-                    for b in ['vel','dist','pDist']:
-                        formula_b = b + ' ~ i'
-                        model = sm.MixedLM.from_formula(formula_b,groups="group",vc_formula=vcf,re_formula="~id",data=day_r_df)
-                        mdf = model.fit()
-                        res_var = mdf.scale
-                        id_var,pi_var = mdf.vcomp
-                        #id_rpt = id_var / (id_var + res_var)
-                        #pi_rpt = pi_var / (pi_var + id_var)
-                        pi_rpt = pi_var / (pi_var + id_var + res_var)
-                        id_rpt = id_var / (id_var + res_var + pi_var)
-                        out_list.extend([str(np.round(id_rpt,4)),str(np.round(pi_rpt,4)),str(np.round(id_var,4)),str(np.round(pi_var,4)),str(np.round(res_var,4))])
-                    if False:
-                        model = sm.MixedLM.from_formula("vel ~ i",groups="group",vc_formula=vcf,re_formula="~id",data=day_r_df)
-                        mdf = model.fit()
-                        res_var = mdf.scale
-                        id_var,pi_var = mdf.vcomp
-                        id_rpt = id_var / (id_var + res_var)
-                        pi_rpt = pi_var / (pi_var + id_var)
-                        out_line = ','.join([str(d),str(r),str(id_rpt),str(pi_rpt),str(id_var),str(pi_var),str(res_var),'\n'])
-                    out_line = ','.join(out_list) + '\n'
-                    out_file.write(out_line)
-
-    #import pdb;pdb.set_trace()
-    out_file.close()
-
-    #pi_speeds11 = median_arrays['pi11']
-    #pi_speeds13 = median_arrays['pi13']
     n_plots = len(median_arrays.keys())
-    if False:
-        fig,axes = plt.subplots(n_plots,3,sharex=True)
-        for k_ in range(len(median_arrays.keys())):
-            k = list(median_arrays.keys())[k_]
-            xs = range(len(median_arrays[k]))
-            axes[k_,0].plot(xs,median_arrays[k])
-            axes[k_,1].plot(xs,median_arrays2[k])
-            axes[k_,2].plot(xs,median_arrays3[k])
-        axes[0,0].set_xlim([0,55])
-        axes[0,0].set_xlabel('Days since birth')
-        axes[0,0].set_ylabel('Speed')
-        axes[0,1].set_ylabel('Center Distance')
-        axes[0,2].set_ylabel('Median IID by fish')
-        axes[1,0].set_ylabel('Speed')
-        axes[1,1].set_ylabel('Center Distance')
-        axes[1,2].set_ylabel('Median IID by fish')
-        fig.savefig('roles.png',dpi=300)
-        fig.savefig('roles.svg')
-    else:
-        n_pis = len(median_arrays.keys())
-        all_std_v = np.full([n_pis,100],np.nan)
-        all_std_p = np.full([n_pis,100],np.nan)
-        all_std_c = np.full([n_pis,100],np.nan)
-        fig,(ax0,ax1,ax2) = plt.subplots(1,3,sharex=True)
-        var_lists = []
-        for k_ in range(len(median_arrays.keys())):
-            k = list(median_arrays.keys())[k_]
-            xs = np.arange(len(median_arrays[k]))
-            pi_std_v = np.nanstd(np.array(median_arrays[k]),axis=1)
-            pi_std_p = np.nanstd(np.array(median_arrays2[k]),axis=1)
-            pi_std_c = np.nanstd(np.array(median_arrays3[k]),axis=1)
-            all_std_v[k_,:len(xs)] = pi_std_v
-            all_std_p[k_,:len(xs)] = pi_std_p
-            all_std_c[k_,:len(xs)] = pi_std_c
-            for x in xs:
-                var_list = [k,x,pi_std_v[x],pi_std_p[x],pi_std_c[x]]
-                var_lists.append(var_list)
-            ax0.plot(pi_std_v,color='black',alpha=0.1)
-            ax1.plot(pi_std_p,color='black',alpha=0.1)
-            ax2.plot(pi_std_c,color='black',alpha=0.1)
 
-        var_df = pd.DataFrame(var_lists,columns=['pi','day','vel.std','pDist.std','coh.std'])
-        ax0.plot(np.nanmean(all_std_v,axis=0),color='black')
-        ax1.plot(np.nanmean(all_std_p,axis=0),color='black')
-        ax2.plot(np.nanmean(all_std_c,axis=0),color='black')
+    n_pis = len(median_arrays.keys())
+    all_std_v = np.full([n_pis,100],np.nan)
+    all_std_p = np.full([n_pis,100],np.nan)
+    all_std_c = np.full([n_pis,100],np.nan)
+    fig,(ax0,ax1,ax2) = plt.subplots(1,3,sharex=True)
+    var_lists = []
+    for k_ in range(len(median_arrays.keys())):
+        k = list(median_arrays.keys())[k_]
+        xs = np.arange(len(median_arrays[k]))
+        pi_std_v = np.nanstd(np.array(median_arrays[k]),axis=1)
+        pi_std_p = np.nanstd(np.array(median_arrays2[k]),axis=1)
+        pi_std_c = np.nanstd(np.array(median_arrays3[k]),axis=1)
+        all_std_v[k_,:len(xs)] = pi_std_v
+        all_std_p[k_,:len(xs)] = pi_std_p
+        all_std_c[k_,:len(xs)] = pi_std_c
+        for x in xs:
+            var_list = [k,x,pi_std_v[x],pi_std_p[x],pi_std_c[x]]
+            var_lists.append(var_list)
+        ax0.plot(pi_std_v,color='black',alpha=0.1)
+        ax1.plot(pi_std_p,color='black',alpha=0.1)
+        ax2.plot(pi_std_c,color='black',alpha=0.1)
 
-        ax0.set_xlabel('Days since birth')
-        ax1.set_xlabel('Days since birth')
-        ax2.set_xlabel('Days since birth')
+    var_df = pd.DataFrame(var_lists,columns=['pi','day','vel.std','pDist.std','coh.std'])
+    ax0.plot(np.nanmean(all_std_v,axis=0),color='black')
+    ax1.plot(np.nanmean(all_std_p,axis=0),color='black')
+    ax2.plot(np.nanmean(all_std_c,axis=0),color='black')
 
-        ax0.set_ylabel('Std Speed')
-        ax1.set_ylabel('Std Center Distance')
-        ax2.set_ylabel('Std IID')
+    ax0.set_xlabel('Days since birth')
+    ax1.set_xlabel('Days since birth')
+    ax2.set_xlabel('Days since birth')
+
+    ax0.set_ylabel('Std Speed')
+    ax1.set_ylabel('Std Center Distance')
+    ax2.set_ylabel('Std IID')
+
     fig.tight_layout()
     plt.show()
     var_df.to_csv('var_df.csv',index=False)

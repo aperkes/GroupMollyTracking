@@ -1,5 +1,6 @@
 ### Organized according to the paper: 
 
+library(lme4)
 library(nlme)
 library(ggplot2)
 library(dplyr)
@@ -23,6 +24,7 @@ setwd("~/Documents/Scripts/GroupMollyTracking/")
 
 indv <- read.csv("JolleTracksAll_4.csv")
 indv <- read.csv("JolleTracksAll_5.csv")
+indv <- read.csv("JolleTracksAll_6.csv")
 indv$ExpDay <- as.integer(indv$ExpDay)
 
 indv[indv$Pi == 'pi11',]$ExpDay <- indv[indv$Pi == 'pi11',]$ExpDay - 16
@@ -72,7 +74,7 @@ indv.com <- good_data
 
 ### Same for hourly (not sure I need this code...)
 
-hourly <- read.csv("JolleTracksHourly_2.csv")
+hourly <- read.csv("JolleTracksHourly_6.csv")
 hourly$Hour <- as.integer(hourly$Hour)
 hourly$ExpDay <- as.integer(hourly$ExpDay)
 
@@ -82,13 +84,13 @@ long_hourly54 <- good_hourly %>%
   filter(Pi %in% piDays[piDays$max >= 54,]$Pi)
 indv.hourly54 <- long_hourly54[long_hourly54$ExpDay <= 54,]
 
-indv.hourly54$dist_meanScale <- scale(indv.hourly54$dist_mean)
-indv.hourly54$vel_meanScale <- scale(indv.hourly54$vel_mean)
-indv.hourly54$pDist_meanScale <- scale(indv.hourly54$pDist_mean)
+indv.hourly54$dist_meanScale <- scale(indv.hourly54$dist_mean_)
+indv.hourly54$vel_meanScale <- scale(indv.hourly54$vel_mean_)
+indv.hourly54$pDist_meanScale <- scale(indv.hourly54$pDist_mean_)
 
-indv.hourly54$velC_meanScale <- scale(indv.hourly54$velC_mean)
-indv.hourly54$pDistC_meanScale <- scale(indv.hourly54$pDistC_mean)
-indv.hourly54$angleC_meanScale <- scale(indv.hourly54$angleC_mean)
+indv.hourly54$velC_meanScale <- scale(indv.hourly54$velC_mean_)
+indv.hourly54$pDistC_meanScale <- scale(indv.hourly54$pDistC_mean_)
+indv.hourly54$angleC_meanScale <- scale(indv.hourly54$angleC_mean_)
 
 day1 <- hourly %>%
   filter(ExpDay == 0)
@@ -102,54 +104,7 @@ day27.com <- day27 %>%
 
 ### DATA EXPLORATION GOES HERE
 
-
-## How do behaviors vary over time? 
-res.cohXtime <- lme(dist_mean ~ ExpDay, random = ~ExpDay|Pi, data = good_data)
-summary(res.cohXtime)
-
-res.velXtime <- lme(vel_mean ~ ExpDay, random = ~ExpDay|Pi, data = good_data)
-summary(res.velXtime)
-#vel.resid <- as.double(VarCorr(res.velXtime)["Residual","Variance"])
-
-res.pDistXtime <- lme(pDist_mean ~ ExpDay, random = ~ExpDay|Pi, data = good_data)
-summary(res.pDistXtime)
-#pDist.resid <- as.double(VarCorr(res.pDistXtime)["Residual","Variance"])
-
-res.pDistCXtime <- lme(pDistC_mean ~ ExpDay, random = ~ExpDay|Pi, data = good_data)
-summary(res.pDistCXtime)
-#pDistC.resid <- as.double(VarCorr(res.pDistCXtime)["Residual","Variance"])
-
-res.activityXtime <- lme(prop_active ~ ExpDay, random = ~ExpDay|Pi, data = good_data)
-summary(res.activityXtime)
-#activity.resid <- as.double(VarCorr(res.activityXtime)["Residual","Variance"])
-
-res.uppervelXtime <- lme(upper_vel ~ ExpDay, random = ~ExpDay|Pi, data = good_data)
-summary(res.uppervelXtime)
-#uppervel.resid <- as.double(VarCorr(res.uppervelXtime)["Residual","Variance"])
-### Add max velocity and activity time
-
-### Need to still control for fish size (but it's decreasing, so as a function of fish size will just increase it)
-
-### Velocity cohesion doesn't change, just hangs out around 0.03, low but sig
-res.velCXtime <- lme(velC_mean ~ ExpDay, random = ~ExpDay|Pi, data = good_data)
-summary(res.velCXtime)
-#velC.resid <- as.double(VarCorr(res.velCXtime)["Residual","Variance"])
-
-res.angleCXtime <- lme(angleC_mean ~ ExpDay, random = ~ExpDay|Pi, data = good_data)
-summary(res.angleCXtime)
-#angleC.resid <- as.double(VarCorr(res.angleCXtime)["Residual","Variance"])
-
-
-### Plotting group blups over time
-
-# Need to build long df
-long_data54 <- indv %>%
-  filter(Pi %in% piDays[piDays$max >= 54,]$Pi)
-indv.long54 <- long_data54[long_data54$ExpDay <= 54,]
-
 ## Define priors used throughout for MCMCglm
-
-
 prior.id.slope <- list(R = list(V = 1, nu = 0.002),
                        G = list(G1=list(V = diag(2), nu = 0.002, alpha.mu = c(0,0),  alpha.V = diag(2)*25^2)))
 
@@ -162,6 +117,126 @@ prior.id.slope.cov <- list(R = list(V = diag(total_days),nu = total_days + 0.002
 
 prior.best <- list(R = list(V = diag(total_days)*0.5,nu = total_days + 0.002),
                    G = list(G1=list(V = diag(2)*0.5, nu = 2.002, alpha.mu = c(0,0),  alpha.V = diag(2)*25^2)))
+
+## How do behaviors vary over time? 
+indv.hourly54$ExpDay_factor <- as.factor(indv.hourly54$ExpDay)
+
+## If you want to do it quick and frequentist
+if (FALSE) {
+  res.cohXtime <- lme(dist_mean ~ ExpDay, random = ~ExpDay|Pi, data = good_data)
+  summary(res.cohXtime)
+  
+  res.velXtime <- lme(vel_mean ~ ExpDay, random = ~ExpDay|Pi, data = good_data)
+  summary(res.velXtime)
+  #vel.resid <- as.double(VarCorr(res.velXtime)["Residual","Variance"])
+  
+  res.pDistXtime <- lme(pDist_mean ~ ExpDay, random = ~ExpDay|Pi, data = good_data)
+  summary(res.pDistXtime)
+  #pDist.resid <- as.double(VarCorr(res.pDistXtime)["Residual","Variance"])
+  
+  res.pDistCXtime <- lme(pDistC_mean ~ ExpDay, random = ~ExpDay|Pi, data = good_data)
+  summary(res.pDistCXtime)
+  #pDistC.resid <- as.double(VarCorr(res.pDistCXtime)["Residual","Variance"])
+  
+  res.activityXtime <- lme(prop_active ~ ExpDay, random = ~ExpDay|Pi, data = good_data)
+  summary(res.activityXtime)
+  #activity.resid <- as.double(VarCorr(res.activityXtime)["Residual","Variance"])
+  
+  res.uppervelXtime <- lme(upper_vel ~ ExpDay, random = ~ExpDay|Pi, data = good_data)
+  summary(res.uppervelXtime)
+  
+  ### Velocity cohesion doesn't change, just hangs out around 0.03, low but sig
+  res.velCXtime <- lme(velC_mean ~ ExpDay, random = ~ExpDay|Pi, data = good_data)
+  summary(res.velCXtime)
+  #velC.resid <- as.double(VarCorr(res.velCXtime)["Residual","Variance"])
+  
+  res.angleCXtime <- lme(angleC_mean ~ ExpDay, random = ~ExpDay|Pi, data = good_data)
+  summary(res.angleCXtime)
+
+} else {
+  ## We are going to run similar models below, but we want the unscaled data here
+  res.velXtime <- MCMCglmm(fixed = vel_mean_ ~ ExpDay,
+                           random = ~us(1 + ExpDay):Pi,
+                           rcov = ~idh(ExpDay_factor):units, ## use this line for het. residual variance
+                           data = indv.hourly54,
+                           family = "gaussian",
+                           pr = T,
+                           prior = prior.best, ## Replace this with prior.id.slope for homo residual variance
+                           nitt=310000, burnin = 10000, thin = 200,
+                           verbose = T)
+  res.velCXtime <- MCMCglmm(fixed = velC_mean_ ~ ExpDay,
+                           random = ~us(1 + ExpDay):Pi,
+                           rcov = ~idh(ExpDay_factor):units, ## use this line for het. residual variance
+                           data = indv.hourly54,
+                           family = "gaussian",
+                           pr = T,
+                           prior = prior.best, ## Replace this with prior.id.slope for homo residual variance
+                           nitt=310000, burnin = 10000, thin = 200,
+                           verbose = T)
+  res.cohXtime <- MCMCglmm(fixed = dist_mean_ ~ ExpDay,
+                           random = ~us(1 + ExpDay):Pi,
+                           rcov = ~idh(ExpDay_factor):units, ## use this line for het. residual variance
+                           data = indv.hourly54,
+                           family = "gaussian",
+                           pr = T,
+                           prior = prior.best, ## Replace this with prior.id.slope for homo residual variance
+                           nitt=310000, burnin = 10000, thin = 200,
+                           verbose = T)
+  res.pDistXtime <- MCMCglmm(fixed = dist_mean_ ~ ExpDay,
+                           random = ~us(1 + ExpDay):Pi,
+                           rcov = ~idh(ExpDay_factor):units, ## use this line for het. residual variance
+                           data = indv.hourly54,
+                           family = "gaussian",
+                           pr = T,
+                           prior = prior.best, ## Replace this with prior.id.slope for homo residual variance
+                           nitt=310000, burnin = 10000, thin = 200,
+                           verbose = T)
+  res.pDistCXtime <- MCMCglmm(fixed = dist_mean_ ~ ExpDay,
+                             random = ~us(1 + ExpDay):Pi,
+                             rcov = ~idh(ExpDay_factor):units, ## use this line for het. residual variance
+                             data = indv.hourly54,
+                             family = "gaussian",
+                             pr = T,
+                             prior = prior.best, ## Replace this with prior.id.slope for homo residual variance
+                             nitt=310000, burnin = 10000, thin = 200,
+                             verbose = T)
+  res.activityXtime <- MCMCglmm(fixed = dist_mean_ ~ ExpDay,
+                           random = ~us(1 + ExpDay):Pi,
+                           rcov = ~idh(ExpDay_factor):units, ## use this line for het. residual variance
+                           data = indv.hourly54,
+                           family = "gaussian",
+                           pr = T,
+                           prior = prior.best, ## Replace this with prior.id.slope for homo residual variance
+                           nitt=310000, burnin = 10000, thin = 200,
+                           verbose = T)
+  res.uppervelXtime <- MCMCglmm(fixed = dist_mean_ ~ ExpDay,
+                              random = ~us(1 + ExpDay):Pi,
+                              rcov = ~idh(ExpDay_factor):units, ## use this line for het. residual variance
+                              data = indv.hourly54,
+                              family = "gaussian",
+                              pr = T,
+                              prior = prior.best, ## Replace this with prior.id.slope for homo residual variance
+                              nitt=310000, burnin = 10000, thin = 200,
+                              verbose = T)
+}
+
+summary(res.velXtime)$solutions
+summary(res.velCXtime)$solutions
+summary(res.cohXtime)$solutions
+#uppervel.resid <- as.double(VarCorr(res.uppervelXtime)["Residual","Variance"])
+### Add max velocity and activity time
+
+### Need to still control for fish size (but it's decreasing, so as a function of fish size will just increase it)
+
+#angleC.resid <- as.double(VarCorr(res.angleCXtime)["Residual","Variance"])
+
+
+### Plotting group blups over time
+
+# Need to build long df
+long_data54 <- indv %>%
+  filter(Pi %in% piDays[piDays$max >= 54,]$Pi)
+indv.long54 <- long_data54[long_data54$ExpDay <= 54,]
 
 ### Define function to get repeatability ####
 
@@ -304,7 +379,7 @@ plots.wall_dist.hourly <- func.ndays.intercepts.het('pDist_meanScale',indv.hourl
 plots.wall_distC.hourly <- func.ndays.intercepts.het('pDistC_meanScale',indv.hourly54,n_days,prior.cov=prior.best,verbose=T)
 plots.angleC.hourly <- func.ndays.intercepts.het('angleC_meanScale',indv.hourly54,n_days,prior.cov=prior.best,verbose=T)
 
-## Daily data is good but doesn't make as much sense to use. 
+## Daily data is fine but hourly is better. But, we'll use this for sorting below. 
 plots.dist <- func.ndays.intercepts.het('dist_meanScale',indv.long54,n_days,prior.cov=prior.best)
 #plots.velC <- func.ndays.intercepts.het('velC_meanScale',indv.long54,n_days,prior.cov=prior.best)
 
@@ -533,30 +608,53 @@ func.shuffled.rpt.i(1,hourly=T)
 #rpt.mat.all <- do.call("cbind",rpt.all)
 #rpt.quants <- rowQuantiles(rpt.mat.all,probs=c(.025,.975))
 
-rpt.coh <- mclapply(1:50,func.shuffled.rpt.i,depVar='dist_meanScale',prior.cov=prior.best,mc.cores=5L)
-rpt.mat.coh <- do.call("cbind",rpt.coh)
-rpt.quants.coh <- rowQuantiles(rpt.mat.coh,probs=c(.025,.975))
+## This takes ages, and we have such a large ourly dataset that the null rpt is 0
+## You can skip this. 
 
-rpt.vel <- mclapply(1:50,func.shuffled.rpt.i,depVar='vel_meanScale',prior.cov=prior.best,mc.cores=5L)
-rpt.mat.vel <- do.call("cbind",rpt.vel)
-rpt.quants.vel <- rowQuantiles(rpt.mat.vel,probs=c(.025,.975))
-
-rpt.velC <- mclapply(1:50,func.shuffled.rpt.i,depVar='velC_meanScale',prior.cov=prior.best,mc.cores=5L)
-rpt.mat.velC <- do.call("cbind",rpt.velC)
-rpt.quants.velC <- rowQuantiles(rpt.mat.velC,probs=c(.025,.975))
-
-rpt.pdist <- mclapply(1:50,func.shuffled.rpt.i,depVar='pDist_meanScale',prior.cov=prior.best,mc.cores=5L)
-rpt.mat.pdist <- do.call("cbind",rpt.pdist)
-rpt.quants.pdist <- rowQuantiles(rpt.mat.pdist,probs=c(.025,.975))
-
-rpt.pdistC <- mclapply(1:50,func.shuffled.rpt.i,depVar='pDistC_meanScale',prior.cov=prior.best,mc.cores=5L)
-rpt.mat.pdistC <- do.call("cbind",rpt.pdistC)
-rpt.quants.pdistC <- rowQuantiles(rpt.mat.pdistC,probs=c(.025,.975))
-
-rpt.angleC <- mclapply(1:50,func.shuffled.rpt.i,depVar='angleC_meanScale',prior.cov=prior.best,mc.cores=5L)
-rpt.mat.angleC <- do.call("cbind",rpt.angleC)
-rpt.quants.angleC <- rowQuantiles(rpt.mat.angleC,probs=c(.025,.975))
-
+if (TRUE) {
+  rpt.coh <- mclapply(1:50,func.shuffled.rpt.i,depVar='dist_meanScale',prior.cov=prior.best,mc.cores=5L)
+  rpt.mat.coh <- do.call("cbind",rpt.coh)
+  rpt.quants.coh <- rowQuantiles(rpt.mat.coh,probs=c(.025,.975))
+  
+  rpt.vel <- mclapply(1:50,func.shuffled.rpt.i,depVar='vel_meanScale',prior.cov=prior.best,mc.cores=5L)
+  rpt.mat.vel <- do.call("cbind",rpt.vel)
+  rpt.quants.vel <- rowQuantiles(rpt.mat.vel,probs=c(.025,.975))
+  
+  rpt.velC <- mclapply(1:50,func.shuffled.rpt.i,depVar='velC_meanScale',prior.cov=prior.best,mc.cores=5L)
+  rpt.mat.velC <- do.call("cbind",rpt.velC)
+  rpt.quants.velC <- rowQuantiles(rpt.mat.velC,probs=c(.025,.975))
+  
+  rpt.pdist <- mclapply(1:50,func.shuffled.rpt.i,depVar='pDist_meanScale',prior.cov=prior.best,mc.cores=5L)
+  rpt.mat.pdist <- do.call("cbind",rpt.pdist)
+  rpt.quants.pdist <- rowQuantiles(rpt.mat.pdist,probs=c(.025,.975))
+  
+  rpt.pdistC <- mclapply(1:50,func.shuffled.rpt.i,depVar='pDistC_meanScale',prior.cov=prior.best,mc.cores=5L)
+  rpt.mat.pdistC <- do.call("cbind",rpt.pdistC)
+  rpt.quants.pdistC <- rowQuantiles(rpt.mat.pdistC,probs=c(.025,.975))
+  
+  rpt.angleC <- mclapply(1:50,func.shuffled.rpt.i,depVar='angleC_meanScale',prior.cov=prior.best,mc.cores=5L)
+  rpt.mat.angleC <- do.call("cbind",rpt.angleC)
+  rpt.quants.angleC <- rowQuantiles(rpt.mat.angleC,probs=c(.025,.975))
+  
+  ### Build full rpt plots
+  rpt.plot.dist_ <- rpt.plot.dist + geom_ribbon(aes(ymin = rpt.quants.coh[,1], ymax = rpt.quants.coh[,2]), fill = "lightblue", alpha = 0.5)
+  rpt.plot.velC_ <- rpt.plot.velC + geom_ribbon(aes(ymin = rpt.quants.velC[,1], ymax = rpt.quants.velC[,2]), fill = "lightblue", alpha = 0.5)
+  rpt.plot.dist2_ <- rpt.plot.dist2 + geom_ribbon(aes(ymin = rpt.quants.coh[,1], ymax = rpt.quants.coh[,2]), fill = "lightblue", alpha = 0.5)
+  rpt.plot.velC2_ <- rpt.plot.velC2 + geom_ribbon(aes(ymin = rpt.quants.velC[,1], ymax = rpt.quants.velC[,2]), fill = "lightblue", alpha = 0.5)
+  rpt.plot.vel_ <- rpt.plot.vel + geom_ribbon(aes(ymin = rpt.quants.vel[,1], ymax = rpt.quants.vel[,2]), fill = "lightblue", alpha = 0.5)
+  rpt.plot.wall_dist_ <- rpt.plot.wall_dist + geom_ribbon(aes(ymin = rpt.quants.pdist[,1], ymax = rpt.quants.pdist[,2]), fill = "lightblue", alpha = 0.5)
+  rpt.plot.wall_distC_ <- rpt.plot.wall_distC + geom_ribbon(aes(ymin = rpt.quants.pdistC[,1], ymax = rpt.quants.pdistC[,2]), fill = "lightblue", alpha = 0.5)
+  rpt.plot.angleC_ <- rpt.plot.angleC + geom_ribbon(aes(ymin = rpt.quants.angleC[,1], ymax = rpt.quants.angleC[,2]), fill = "lightblue", alpha = 0.5)
+} else {
+  rpt.plot.dist_ <- rpt.plot.dist
+  rpt.plot.velC_ <- rpt.plot.velC 
+  rpt.plot.dist2_ <- rpt.plot.dist2 
+  rpt.plot.velC2_ <- rpt.plot.velC2
+  rpt.plot.vel_ <- rpt.plot.vel 
+  rpt.plot.wall_dist_ <- rpt.plot.wall_dist
+  rpt.plot.wall_distC_ <- rpt.plot.wall_distC
+  rpt.plot.angleC_ <- rpt.plot.angleC
+}
 
 ### Make Plots ####
 
@@ -565,42 +663,34 @@ rpt.quants.angleC <- rowQuantiles(rpt.mat.angleC,probs=c(.025,.975))
 #rpt.plot.velC; sliding.velC[[1]]
 
 ## Main Plots
-rpt.plot.dist_ <- rpt.plot.dist + geom_ribbon(aes(ymin = rpt.quants.coh[,1], ymax = rpt.quants.coh[,2]), fill = "lightblue", alpha = 0.5)
+
 sliding.dist[[1]]; rpt.plot.dist_
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plots.dist_mean.RPT.jpg',rpt.plot.dist_,width = 3,height=3,units="in")
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plots.dist_mean.sliding.jpg',sliding.dist[[1]],width = 3,height=3,units="in")
 
-rpt.plot.velC_ <- rpt.plot.velC + geom_ribbon(aes(ymin = rpt.quants.velC[,1], ymax = rpt.quants.velC[,2]), fill = "lightblue", alpha = 0.5)
 sliding.velC[[1]]; rpt.plot.velC_
 
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plots.velC.RPT.jpg',rpt.plot.velC_,width = 3,height=3,units="in")
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plots.velC.sliding.jpg',sliding.velC[[1]],width = 3,height=3,units="in")
 
 ### Supplemental Plots
-
-rpt.plot.dist2_ <- rpt.plot.dist2 + geom_ribbon(aes(ymin = rpt.quants.coh[,1], ymax = rpt.quants.coh[,2]), fill = "lightblue", alpha = 0.5)
-rpt.plot.velC2_ <- rpt.plot.velC2 + geom_ribbon(aes(ymin = rpt.quants.velC[,1], ymax = rpt.quants.velC[,2]), fill = "lightblue", alpha = 0.5)
-
+sliding.dist[[1]]; rpt.plot.dist2_
+sliding.velC[[1]]; rpt.plot.velC2_
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.dist_mean.RPT.jpg',rpt.plot.dist2_,width = 3,height=3,units="in")
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.velC.RPT.jpg',rpt.plot.velC2_,width = 3,height=3,units="in")
 
-rpt.plot.vel_ <- rpt.plot.vel + geom_ribbon(aes(ymin = rpt.quants.vel[,1], ymax = rpt.quants.vel[,2]), fill = "lightblue", alpha = 0.5)
 sliding.vel[[1]];rpt.plot.vel_
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.vel.RPT.jpg',rpt.plot.vel_,width = 3,height=3,units="in")
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.vel.sliding.jpg',sliding.vel[[1]],width = 3,height=3,units="in")
 
-rpt.plot.wall_dist_ <- rpt.plot.wall_dist + geom_ribbon(aes(ymin = rpt.quants.pdist[,1], ymax = rpt.quants.pdist[,2]), fill = "lightblue", alpha = 0.5)
 sliding.wall_dist[[1]];rpt.plot.wall_dist_
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.wall_dist.RPT.jpg',rpt.plot.wall_dist_,width = 3,height=3,units="in")
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.wall_dist.sliding.jpg',sliding.wall_dist[[1]],width = 3,height=3,units="in")
 
-rpt.plot.wall_distC_ <- rpt.plot.wall_distC + geom_ribbon(aes(ymin = rpt.quants.pdistC[,1], ymax = rpt.quants.pdistC[,2]), fill = "lightblue", alpha = 0.5)
 sliding.wall_distC[[1]];rpt.plot.wall_distC_
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.wall_distC.RPT.jpg',rpt.plot.wall_distC_,width = 3,height=3,units="in")
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.wall_distC.sliding.jpg',sliding.wall_distC[[1]],width = 3,height=3,units="in")
 
-
-rpt.plot.angleC_ <- rpt.plot.angleC + geom_ribbon(aes(ymin = rpt.quants.angleC[,1], ymax = rpt.quants.angleC[,2]), fill = "lightblue", alpha = 0.5)
 sliding.angleC[[1]]; rpt.plot.angleC_
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.angleC.RPT.jpg',rpt.plot.angleC_,width = 3,height=3,units="in")
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.angleC.sliding.jpg',sliding.angleC[[1]],width = 3,height=3,units="in")
@@ -907,18 +997,18 @@ for (r in seq(dim(among.corr.d)[1])) {
 }
 cor(among.corr.d$value,among.corr.d$lme.corr)
 
-if (False) {
-  plots.predict.dist2 <- func.ndays.predict('dist_mean',indv.long54,5)
-  plots.predict.velC <- func.ndays.predict('velC_mean',indv.long54,5)
-  plots.predict.vel <- func.ndays.predict('vel_mean',indv.long54,5)
+if (FALSE) {
+  plots.predict.dist2 <- func.ndays.predict('dist_mean_',indv.long54,5)
+  plots.predict.velC <- func.ndays.predict('velC_mean_',indv.long54,5)
+  plots.predict.vel <- func.ndays.predict('vel_mean_',indv.long54,5)
   
   plots.predict.wall_dist <- func.ndays.predict('pDist_meanScale',indv.long54,5)
   plots.predict.wall_distC <- func.ndays.predict('pDistC_meanScale',indv.long54,5)
   plots.predict.angleC <- func.ndays.predict('angleC_meanScale',indv.long54,5)
 } else { 
-  plots.predict.dist <- func.ndays.predict('dist_mean',indv.hourly54,5,hourly=T)
-  plots.predict.velC <- func.ndays.predict('velC_mean',indv.hourly54,5,hourly=T)
-  plots.predict.vel <- func.ndays.predict('vel_mean',indv.hourly54,5,hourly=T)
+  plots.predict.dist <- func.ndays.predict('dist_mean_',indv.hourly54,5,hourly=T)
+  plots.predict.velC <- func.ndays.predict('velC_mean_',indv.hourly54,5,hourly=T)
+  plots.predict.vel <- func.ndays.predict('vel_mean_',indv.hourly54,5,hourly=T)
   
   plots.predict.wall_dist <- func.ndays.predict('pDist_meanScale',indv.hourly54,5,hourly=T)
   plots.predict.wall_distC <- func.ndays.predict('pDistC_meanScale',indv.hourly54,5,hourly=T)
@@ -929,7 +1019,7 @@ if (False) {
 ### Building the whole matrix fig is quite complicated
 
 ### Define function to plot massive correlation plot
-func.megafig <- function(plots.predict,plots.beh,hourly=F) {
+func.megafig <- function(plots.predict,plots.beh,hourly=T) {
   
   
   behav.bin.id <- plots.predict[[3]]
@@ -1040,7 +1130,7 @@ megafig.dist
 megafig.dist.hourly <- func.megafig(plots.predict.dist.hourly,T)
 megafig.dist.hourly
 
-megafig.dist <- megafig.dist.hourly
+#megafig.dist <- megafig.dist.hourly
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plot.F3.megafig.dist.jpg',megafig.dist,width = 6.5,height=6.5,units="in")
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plot.F3.megafig.distSig.jpg',plots.predict.dist[[1]],width = 6.5,height=6.5,units="in")
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plot.F3.megafig.dist.svg',megafig.dist,width = 6.5,height=6.5,units="in")
@@ -1063,14 +1153,14 @@ ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plot.F3.megafig.velCsig.jpg'
 
 
 megafig.pDist <- func.megafig(plots.predict.wall_dist)
-ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.pDist.jpg',megafig.vel,width = 6.5,height=6.5,units="in")
-ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.pDist.svg',megafig.vel,width = 6.5,height=6.5,units="in")
+ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.pDist.jpg',megafig.pDist,width = 6.5,height=6.5,units="in")
+ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.pDist.svg',megafig.pDist,width = 6.5,height=6.5,units="in")
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plot.F3.megafig.pDistSig.jpg',plots.predict.wall_dist[[1]],width = 6.5,height=6.5,units="in")
 
 megafig.pDistC <- func.megafig(plots.predict.wall_distC)
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.pDistC.jpg',megafig.pDistC,width = 6.5,height=6.5,units="in")
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.pDistC.svg',megafig.pDistC,width = 6.5,height=6.5,units="in")
-ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plot.F3.megafig.pDistSig.jpg',plots.predict.wall_distC[[1]],width = 6.5,height=6.5,units="in")
+ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plot.F3.megafig.pDistCSig.jpg',plots.predict.wall_distC[[1]],width = 6.5,height=6.5,units="in")
 
 megafig.angleC <- func.megafig(plots.predict.angleC)
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.S2.megafig.angleC.jpg',megafig.angleC,width = 6.5,height=6.5,units="in")
@@ -1125,7 +1215,7 @@ behav.hourly.cor <- MCMCglmm(cbind(dist_meanScale, vel_meanScale, velC_meanScale
                           prior = prior.cov6, 
                           nitt = 510000, thin = 200, burnin = 10000, 
                           verbose = T,
-                          data = hourly.com)
+                          data = indv.hourly54)
 
 
 behav.matrix.hourly <- matrix(posterior.mode(posterior.cor(behav.hourly.cor$VCV[,1:36])),6,6, 
@@ -1180,7 +1270,7 @@ func.subRPT <- function(d,r,beh='vel') {
   sub.ranked <- df.ranked[df.ranked$rank == r,]
   sub.ranked <- sub.ranked[sub.ranked$day == d,]
   print(sub.ranked)
-  form = as.formula(paste(beh,"~ 1 + (1|pid) + (1|id)",sep=""))
+  form = as.formula(paste(beh,"~ 1 + (1|pid) + (1|pid:id)",sep=""))
   #res.rankDay <- lme(vel ~ 1,random=list(~1|pid, ~1|id),data=sub.ranked)
   res.rankDay <- lmer(form,data=sub.ranked)
   vcomps <- as.data.frame(VarCorr(res.rankDay))
@@ -1246,12 +1336,20 @@ func.decomp.var <- function(df = df.rpt.vel,beh='vel') {
   form.vgr <- as.formula(paste('sdev.id.',beh,"~ day",sep=""))
   form.vpop <- as.formula(paste('sdev.pi.',beh,"~ day",sep=""))
   
+  if (FALSE) {
   rpt.id <- lme(form.rid,random=~1|rank,data=df)
   rpt.pi <- lme(form.rpi,random=~1|rank,data=df)
   var.id <- lme(form.vid,random=~1|rank,data=df)
   var.group <- lme(form.vgr,random=~1|rank,data=df)
   var.pop <- lme(form.vpop,random=~1|rank,data=df)
-  
+  }
+  else {
+    rpt.id <- lm(form.rid,data=df)
+    rpt.pi <- lm(form.rpi,data=df)
+    var.id <- lm(form.vid,data=df)
+    var.group <- lm(form.vgr,data=df)
+    var.pop <- lm(form.vpop,data=df)
+  }
   print('###### Residual Variance:')
   print(summary(var.id))
   
