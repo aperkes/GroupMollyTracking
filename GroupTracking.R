@@ -182,7 +182,7 @@ if (FALSE) {
                            prior = prior.best, ## Replace this with prior.id.slope for homo residual variance
                            nitt=310000, burnin = 10000, thin = 200,
                            verbose = T)
-  res.pDistXtime <- MCMCglmm(fixed = dist_mean_ ~ ExpDay,
+  res.pDistXtime <- MCMCglmm(fixed = pDist_mean_ ~ ExpDay,
                            random = ~us(1 + ExpDay):Pi,
                            rcov = ~idh(ExpDay_factor):units, ## use this line for het. residual variance
                            data = indv.hourly54,
@@ -191,7 +191,7 @@ if (FALSE) {
                            prior = prior.best, ## Replace this with prior.id.slope for homo residual variance
                            nitt=310000, burnin = 10000, thin = 200,
                            verbose = T)
-  res.pDistCXtime <- MCMCglmm(fixed = dist_mean_ ~ ExpDay,
+  res.pDistCXtime <- MCMCglmm(fixed = pDistC_mean_ ~ ExpDay,
                              random = ~us(1 + ExpDay):Pi,
                              rcov = ~idh(ExpDay_factor):units, ## use this line for het. residual variance
                              data = indv.hourly54,
@@ -200,7 +200,7 @@ if (FALSE) {
                              prior = prior.best, ## Replace this with prior.id.slope for homo residual variance
                              nitt=310000, burnin = 10000, thin = 200,
                              verbose = T)
-  res.activityXtime <- MCMCglmm(fixed = dist_mean_ ~ ExpDay,
+  res.activityXtime <- MCMCglmm(fixed = prop_active_ ~ ExpDay,
                            random = ~us(1 + ExpDay):Pi,
                            rcov = ~idh(ExpDay_factor):units, ## use this line for het. residual variance
                            data = indv.hourly54,
@@ -209,7 +209,7 @@ if (FALSE) {
                            prior = prior.best, ## Replace this with prior.id.slope for homo residual variance
                            nitt=310000, burnin = 10000, thin = 200,
                            verbose = T)
-  res.uppervelXtime <- MCMCglmm(fixed = dist_mean_ ~ ExpDay,
+  res.uppervelXtime <- MCMCglmm(fixed = upper_vel_ ~ ExpDay,
                               random = ~us(1 + ExpDay):Pi,
                               rcov = ~idh(ExpDay_factor):units, ## use this line for het. residual variance
                               data = indv.hourly54,
@@ -223,6 +223,10 @@ if (FALSE) {
 summary(res.velXtime)$solutions
 summary(res.velCXtime)$solutions
 summary(res.cohXtime)$solutions
+summary(res.pDistXtime)$solutions
+summary(res.pDistCXtime)$solutions
+summary(res.activityXtime)$solutions
+summary(res.uppervelXtime)$solutions
 #uppervel.resid <- as.double(VarCorr(res.uppervelXtime)["Residual","Variance"])
 ### Add max velocity and activity time
 
@@ -455,8 +459,7 @@ func.rpt.plot <- function(rpt.data,n_days=1,components=F) {
   n_dates = length(dates)
   if (n_dates > 10) { 
     breaks <- seq(0,max(dates),5)
-  }
-  else {
+  } else {
     breaks <- dates
   }  
   if (components == T) {
@@ -471,8 +474,7 @@ func.rpt.plot <- function(rpt.data,n_days=1,components=F) {
     geom_point(aes(y = rpt, color = "#000000"), size = 1) +
     geom_line(aes(x=dates, y = rpt, color = "#000000")) +
     geom_errorbar(aes(ymin = lower.rpt, ymax = upper.rpt, width = 1, color = "#000000")) 
-  }
-  else {
+  } else {
     rpt.plot <- ggplot(rpt.data, aes(x = dates)) +
     geom_point(aes(y = rpt, color = "#000000"), size = 1) +
     geom_line(aes(x=dates, y = rpt, color = "#000000")) +
@@ -515,12 +517,12 @@ rpt.plot.angleC <- func.rpt.plot(plots.angleC.hourly[[5]],components=T)
 #rpt.plot.angle_std <- func.rpt.plot(plots.angle_std[[5]])
 
 #### Run permutation analysis ####
-df.foo <- indv.hourly54
-df.foo2 <- df.foo
-df.foo$ShuffledPi <- 0
-for (i in seq(0,max(df.foo$ExpDay))){
-  df.foo2[df.foo2$ExpDay == i,'ShuffledPi'] <- sample(df.foo2[df.foo2$ExpDay == i,'Pi'])
-}
+#df.foo <- indv.hourly54
+#df.foo2 <- df.foo
+#df.foo$ShuffledPi <- 0
+#for (i in seq(0,max(df.foo$ExpDay))){
+#  df.foo2[df.foo2$ExpDay == i,'ShuffledPi'] <- sample(df.foo2[df.foo2$ExpDay == i,'Pi'])
+#}
 ## Function to make a shuffled dataframe
 func.shuffle.df <- function(df) {
   
@@ -544,8 +546,7 @@ func.shuffled.rpt.i <- function(i,depVar="dist_mean",day_bin=1,prior.cov=prior.b
   set.seed(i)
   if (hourly) { 
     df.shuffled <- func.shuffle.df(indv.hourly54)
-  }
-  else { 
+  } else { 
     df.shuffled <- func.shuffle.df(indv.long54)
   }
   #depVar <- "dist_mean"
@@ -611,7 +612,7 @@ func.shuffled.rpt.i(1,hourly=T)
 ## This takes ages, and we have such a large ourly dataset that the null rpt is 0
 ## You can skip this. 
 
-if (TRUE) {
+if (FALSE) {
   rpt.coh <- mclapply(1:50,func.shuffled.rpt.i,depVar='dist_meanScale',prior.cov=prior.best,mc.cores=5L)
   rpt.mat.coh <- do.call("cbind",rpt.coh)
   rpt.quants.coh <- rowQuantiles(rpt.mat.coh,probs=c(.025,.975))
@@ -743,26 +744,25 @@ func.ndays.predict <- function(depVar,df,n_days=5,hourly=F) {
         )) %>%
       select(Pi, bin, all_of(depVar), obs.day, Hour) %>%
       spread(bin, depVar, sep = "")
+    } else {
+      df.wide <- df %>%
+      mutate(
+        obs.day = case_when(
+          ExpDay %in% seq(0,max_days,n_days) ~ 1 %% n_days + 1, 
+          ExpDay %in% seq(1,max_days,n_days) ~ 2 %% n_days + 1, 
+          ExpDay %in% seq(2,max_days,n_days) ~ 3 %% n_days + 1, 
+          ExpDay %in% seq(3,max_days,n_days) ~ 4 %% n_days + 1, 
+          ExpDay %in% seq(4,max_days,n_days) ~ 5 %% n_days + 1, 
+          ExpDay %in% seq(5,max_days,n_days) ~ 6 %% n_days + 1, 
+          ExpDay %in% seq(6,max_days,n_days) ~ 7 %% n_days + 1, 
+          ExpDay %in% seq(7,max_days,n_days) ~ 8 %% n_days + 1, 
+          ExpDay %in% seq(8,max_days,n_days) ~ 9 %% n_days + 1, 
+          ExpDay %in% seq(9,max_days,n_days) ~ 10 %% n_days + 1, 
+          ExpDay %in% seq(10,max_days,n_days) ~ 11 %% n_days + 1, 
+        )) %>%
+      select(Pi, bin, all_of(depVar), obs.day) %>%
+      spread(bin, depVar, sep = "")
     }
-  else {
-  df.wide <- df %>%
-    mutate(
-      obs.day = case_when(
-        ExpDay %in% seq(0,max_days,n_days) ~ 1 %% n_days + 1, 
-        ExpDay %in% seq(1,max_days,n_days) ~ 2 %% n_days + 1, 
-        ExpDay %in% seq(2,max_days,n_days) ~ 3 %% n_days + 1, 
-        ExpDay %in% seq(3,max_days,n_days) ~ 4 %% n_days + 1, 
-        ExpDay %in% seq(4,max_days,n_days) ~ 5 %% n_days + 1, 
-        ExpDay %in% seq(5,max_days,n_days) ~ 6 %% n_days + 1, 
-        ExpDay %in% seq(6,max_days,n_days) ~ 7 %% n_days + 1, 
-        ExpDay %in% seq(7,max_days,n_days) ~ 8 %% n_days + 1, 
-        ExpDay %in% seq(8,max_days,n_days) ~ 9 %% n_days + 1, 
-        ExpDay %in% seq(9,max_days,n_days) ~ 10 %% n_days + 1, 
-        ExpDay %in% seq(10,max_days,n_days) ~ 11 %% n_days + 1, 
-      )) %>%
-    select(Pi, bin, all_of(depVar), obs.day) %>%
-    spread(bin, depVar, sep = "")
-  }
   #df.clean <- df.wide[, colSums(is.na(df.wide)) == 0]
   df.clean <- df.wide[rowSums(is.na(df.wide)) == 0,]
   
@@ -817,6 +817,10 @@ func.ndays.predict <- function(depVar,df,n_days=5,hourly=F) {
     mutate(p.value = ifelse(value < 0, 1, 0)) %>%
     select(Var1, Var2, p.value)
   
+  test2 <- melt(upper.bin) %>%
+    mutate(p.value = ifelse(value > 0, 1, 0)) %>%
+    select(Var1, Var2, p.value)
+  
   df.corrs <- melt(replace(id.matrix.bin, lower.tri(id.matrix.bin, T), NA), na.rm = T)
   str(df.corrs)
   
@@ -845,6 +849,13 @@ func.ndays.predict <- function(depVar,df,n_days=5,hourly=F) {
   
   p.mat <- diag(n_bins)
   p.mat[cbind(test$Var1, test$Var2)] <- p.mat[cbind(test$Var2, test$Var1)] <- test$p.value
+  
+  p.mat2 <- diag(n_bins)
+  p.mat2[cbind(test2$Var1, test2$Var2)] <- p.mat2[cbind(test2$Var2, test2$Var1)] <- test2$p.value
+  
+  p.mat3 <- (p.mat & p.mat2)
+  
+  p.mat <- p.mat3 ## not sure why the logic works this way, but it does.
   print(p.mat)
   print(id.matrix.bin)
   
@@ -1033,8 +1044,7 @@ func.megafig <- function(plots.predict,plots.beh,hourly=T) {
   # n_bins:len(Sol)
   if (hourly) {
     shift <- 1
-  }
-  else {
+  } else {
     shift <- 1
   }
   binwise.blups <- data_frame(Trait = colnames(behav.bin.id$Sol)[(n_bins + shift):ncol(behav.bin.id$Sol)],
@@ -1067,10 +1077,10 @@ func.megafig <- function(plots.predict,plots.beh,hourly=T) {
   
   matrix.fig <- plots.predict[[2]]
   print(binwise.blups)
-  x_min <- min(binwise.blups[,seq(2,11)])
-  print(x_min)
-  x_max <- max(binwise.blups[,seq(2,11)])
-  print(x_max)
+  xy_min <- min(binwise.blups[,seq(2,11)])
+
+  xy_max <- max(binwise.blups[,seq(2,11)])
+
   for (i in seq(n_bins)) {
     for (j in seq(n_bins)) {
       if(i >= j) next
@@ -1078,6 +1088,8 @@ func.megafig <- function(plots.predict,plots.beh,hourly=T) {
       x_max <- max(binwise.blups[,j+1])
       y_min <- min(binwise.blups[,i+1])
       y_max <- max(binwise.blups[,i+1])
+      xy_min <- min(c(x_min,y_min))
+      xy_max <- max(c(x_max,y_max))
       n_count <- n_count + 1
       slope <- among.corr[among.corr$Var1 == bin_names.full[i] & among.corr$Var2 == bin_names.full[j],]$value
 
@@ -1088,8 +1100,8 @@ func.megafig <- function(plots.predict,plots.beh,hourly=T) {
         scale_color_viridis_c(option = "plasma") +
         #scale_x_continuous(limits = c(-2, 2)) + #, breaks = c(-0.75, 0, 0.75, 1.5, 2.25)) +
         #scale_y_continuous(limits = c(-2, 2)) + #, breaks = c(-0.75, 0, 0.75, 1.5, 2.25)) +
-        scale_x_continuous(limits = c(x_min, x_max)) + 
-        scale_y_continuous(limits = c(x_min, x_max)) +
+        scale_x_continuous(limits = c(xy_min, xy_max)) + 
+        scale_y_continuous(limits = c(xy_min, xy_max)) +
         theme_classic() +
         theme(legend.position = "none",
               axis.title = element_blank(),
@@ -1124,11 +1136,11 @@ func.megafig <- function(plots.predict,plots.beh,hourly=T) {
 ### Main fgure
 
 megafig.dist <- func.megafig(plots.predict.dist,T)
-megafig.dist <- func.megafig(plots.predict.dist2)
+#megafig.dist <- func.megafig(plots.predict.dist2)
 megafig.dist
 
-megafig.dist.hourly <- func.megafig(plots.predict.dist.hourly,T)
-megafig.dist.hourly
+#megafig.dist.hourly <- func.megafig(plots.predict.dist.hourly,T)
+#megafig.dist.hourly
 
 #megafig.dist <- megafig.dist.hourly
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plot.F3.megafig.dist.jpg',megafig.dist,width = 6.5,height=6.5,units="in")
@@ -1173,77 +1185,77 @@ ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plot.F3.megafig.angleCSig.jp
 prior.cov6 <- list(R = list(V = diag(6), nu = 6.002),
                    G = list(G1=list(V = diag(6), nu = 6.002, alpha.mu = rep(0,6), alpha.V = 1000*diag(6))))
 
-behav.all.cor <- MCMCglmm(cbind(dist_meanScale, vel_meanScale, velC_meanScale, pDist_meanScale,pDistC_meanScale,angleC_meanScale) ~ trait - 1, 
-                          random = ~us(trait):Pi, 
-                          rcov = ~us(trait):units,
-                          family = c(rep("gaussian", 6)), 
-                          prior = prior.cov6, 
-                          nitt = 510000, thin = 200, burnin = 10000, 
-                          verbose = F,
-                          data = indv.com)
-
-# Model for entire observation period  ----
-behav.matrix.all <- matrix(posterior.mode(posterior.cor(behav.all.cor$VCV[,1:36])),6,6, 
-                           dimnames = list(c("dist", "vel", "velC", "pDist","pDistC","angleC"), 
-                                           c("dist", "vel", "velC", "pDist","pDistC","angleC")))
-
-
-# now to extract the CI estimates
-ci.all <- data.frame(HPDinterval(posterior.cor(behav.all.cor$VCV[,1:36])))
-
-# for corrplot need 3 matrices - estimates, lower CI, upper CI
-lower.all <- matrix(ci.all[,1],6,6)
-upper.all <- matrix(ci.all[,2],6,6)
-
-test <- melt(lower.all) %>%
-  mutate(p.value = ifelse(value < 0, 1, 0)) %>%
-  select(Var1, Var2, p.value)
-
-p.mat <- diag(6)
-p.mat[cbind(test$Var1, test$Var2)] <- p.mat[cbind(test$Var2, test$Var1)] <- test$p.value
-
-colnames(p.mat) <- c("dist", "vel", "velC", "pDist","pDistC","angleC")
-row.names(p.mat) <- c("dist", "vel", "velC", "pDist","pDistC","angleC")
-
-corrplot(behav.matrix.all, type = "upper", method = "ellipse", p.mat = p.mat, insig = "blank")
-
-
-behav.hourly.cor <- MCMCglmm(cbind(dist_meanScale, vel_meanScale, velC_meanScale, pDist_meanScale,pDistC_meanScale,angleC_meanScale) ~ trait - 1, 
-                          random = ~us(trait):Pi, 
-                          rcov = ~us(trait):units,
-                          family = c(rep("gaussian", 6)), 
-                          prior = prior.cov6, 
-                          nitt = 510000, thin = 200, burnin = 10000, 
-                          verbose = T,
-                          data = indv.hourly54)
-
-
-behav.matrix.hourly <- matrix(posterior.mode(posterior.cor(behav.hourly.cor$VCV[,1:36])),6,6, 
-                           dimnames = list(c("dist", "vel", "velC", "pDist","pDistC","angleC"), 
-                                           c("dist", "vel", "velC", "pDist","pDistC","angleC")))
-
-
-# now to extract the CI estimates
-ci.hourly <- data.frame(HPDinterval(posterior.cor(behav.hourly.cor$VCV[,1:36])))
-
-# for corrplot need 3 matrices - estimates, lower CI, upper CI
-lower.hourly <- matrix(ci.hourly[,1],6,6)
-upper.hourly <- matrix(ci.hourly[,2],6,6)
-
-test.hourly <- melt(lower.hourly) %>%
-  mutate(p.value = ifelse(value < 0, 1, 0)) %>%
-  select(Var1, Var2, p.value)
-
-p.mat <- diag(6)
-p.mat[cbind(test.hourly$Var1, test.hourly$Var2)] <- p.mat[cbind(test.hourly$Var2, test.hourly$Var1)] <- test.hourly$p.value
-
-colnames(p.mat) <- c("dist", "vel", "velC", "pDist","pDistC","angleC")
-row.names(p.mat) <- c("dist", "vel", "velC", "pDist","pDistC","angleC")
-
-corrplot(behav.matrix.hourly, type = "upper", method = "number", p.mat = p.mat, insig = "blank")
-
-corrplot(behav.matrix.hourly, type = "upper", method = "number", insig = "blank")
-
+if (FALSE) {
+  behav.all.cor <- MCMCglmm(cbind(dist_meanScale, vel_meanScale, velC_meanScale, pDist_meanScale,pDistC_meanScale,angleC_meanScale) ~ trait - 1, 
+                            random = ~us(trait):Pi, 
+                            rcov = ~us(trait):units,
+                            family = c(rep("gaussian", 6)), 
+                            prior = prior.cov6, 
+                            nitt = 510000, thin = 200, burnin = 10000, 
+                            verbose = F,
+                            data = indv.com)
+  
+  # Model for entire observation period  ----
+  behav.matrix.all <- matrix(posterior.mode(posterior.cor(behav.all.cor$VCV[,1:36])),6,6, 
+                             dimnames = list(c("dist", "vel", "velC", "pDist","pDistC","angleC"), 
+                                             c("dist", "vel", "velC", "pDist","pDistC","angleC")))
+  
+  
+  # now to extract the CI estimates
+  ci.all <- data.frame(HPDinterval(posterior.cor(behav.all.cor$VCV[,1:36])))
+  
+  # for corrplot need 3 matrices - estimates, lower CI, upper CI
+  lower.all <- matrix(ci.all[,1],6,6)
+  upper.all <- matrix(ci.all[,2],6,6)
+  
+  test <- melt(lower.all) %>%
+    mutate(p.value = ifelse(value < 0, 1, 0)) %>%
+    select(Var1, Var2, p.value)
+  
+  p.mat <- diag(6)
+  p.mat[cbind(test$Var1, test$Var2)] <- p.mat[cbind(test$Var2, test$Var1)] <- test$p.value
+  
+  colnames(p.mat) <- c("dist", "vel", "velC", "pDist","pDistC","angleC")
+  row.names(p.mat) <- c("dist", "vel", "velC", "pDist","pDistC","angleC")
+  
+  corrplot(behav.matrix.all, type = "upper", method = "ellipse", p.mat = p.mat, insig = "blank")
+} else {
+  behav.hourly.cor <- MCMCglmm(cbind(dist_meanScale, vel_meanScale, velC_meanScale, pDist_meanScale,pDistC_meanScale,angleC_meanScale) ~ trait - 1, 
+                            random = ~us(trait):Pi, 
+                            rcov = ~us(trait):units,
+                            family = c(rep("gaussian", 6)), 
+                            prior = prior.cov6, 
+                            nitt = 510000, thin = 200, burnin = 10000, 
+                            verbose = T,
+                            data = indv.hourly54)
+  
+  
+  behav.matrix.hourly <- matrix(posterior.mode(posterior.cor(behav.hourly.cor$VCV[,1:36])),6,6, 
+                             dimnames = list(c("dist", "vel", "velC", "pDist","pDistC","angleC"), 
+                                             c("dist", "vel", "velC", "pDist","pDistC","angleC")))
+  
+  
+  # now to extract the CI estimates
+  ci.hourly <- data.frame(HPDinterval(posterior.cor(behav.hourly.cor$VCV[,1:36])))
+  
+  # for corrplot need 3 matrices - estimates, lower CI, upper CI
+  lower.hourly <- matrix(ci.hourly[,1],6,6)
+  upper.hourly <- matrix(ci.hourly[,2],6,6)
+  
+  test.hourly <- melt(lower.hourly) %>%
+    mutate(p.value = ifelse(value < 0, 1, 0)) %>%
+    select(Var1, Var2, p.value)
+  
+  p.mat <- diag(6)
+  p.mat[cbind(test.hourly$Var1, test.hourly$Var2)] <- p.mat[cbind(test.hourly$Var2, test.hourly$Var1)] <- test.hourly$p.value
+  
+  colnames(p.mat) <- c("dist", "vel", "velC", "pDist","pDistC","angleC")
+  row.names(p.mat) <- c("dist", "vel", "velC", "pDist","pDistC","angleC")
+  
+  corrplot(behav.matrix.hourly, type = "upper", method = "number", p.mat = p.mat, insig = "blank")
+  
+  corrplot(behav.matrix.hourly, type = "upper", method = "number", insig = "blank") 
+}
 ## Confirm that std decreases over time
 df.var <- read.csv('var_df.csv')
 df.var <- drop_na(df.var)
@@ -1337,13 +1349,12 @@ func.decomp.var <- function(df = df.rpt.vel,beh='vel') {
   form.vpop <- as.formula(paste('sdev.pi.',beh,"~ day",sep=""))
   
   if (FALSE) {
-  rpt.id <- lme(form.rid,random=~1|rank,data=df)
-  rpt.pi <- lme(form.rpi,random=~1|rank,data=df)
-  var.id <- lme(form.vid,random=~1|rank,data=df)
-  var.group <- lme(form.vgr,random=~1|rank,data=df)
-  var.pop <- lme(form.vpop,random=~1|rank,data=df)
-  }
-  else {
+    rpt.id <- lme(form.rid,random=~1|rank,data=df)
+    rpt.pi <- lme(form.rpi,random=~1|rank,data=df)
+    var.id <- lme(form.vid,random=~1|rank,data=df)
+    var.group <- lme(form.vgr,random=~1|rank,data=df)
+    var.pop <- lme(form.vpop,random=~1|rank,data=df)
+  } else {
     rpt.id <- lm(form.rid,data=df)
     rpt.pi <- lm(form.rpi,data=df)
     var.id <- lm(form.vid,data=df)

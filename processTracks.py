@@ -19,7 +19,7 @@ PIX_SCALE = 670 / 27 ## Distance between floor edges in pixels, cms
 ## Reads in array of xy coordints (frames,2)
 ## spirts out array of polar coordints (frames,2)
 def xy_to_polar(a,center=(400,400)):
-    a_polar = np.empty(a.shape)
+    a_polar = np.full(a.shape,np.nan)
     dx = a[:,0] - center[0]
     dy = a[:,1] - center[1]
     a_polar[:,0] = np.sqrt(dx**2 + dy**2)
@@ -51,7 +51,7 @@ def get_tracks(in_file):
     n_fish = len(fishIDs)
     n_frames = max(track_df.frame) + 1
     track_array = np.full([n_frames,n_fish,2],np.nan)
-    track_polar = np.array(track_array)
+    track_polar = np.full(np.shape(track_array),np.nan)
 
     for f in range(n_fish):
         f_df = track_df[track_df.id == fishIDs[f]]
@@ -64,7 +64,6 @@ def get_tracks(in_file):
 
         
         track_polar[indices,f] = xy_to_polar(xy_f)
-
 
     #track_array[track_array == -1] = np.nan
     return track_array,track_polar,[n_frames,n_fish,fishIDs]
@@ -527,8 +526,8 @@ if __name__ == '__main__':
     long_df = long_df[new_cols_]
 
     if True:
-        csv_df.to_csv('./JolleTracksAll_6.csv',index=False)
-        long_df.to_csv('./JolleTracksHourly_6.csv',index=False)
+        csv_df.to_csv('./JolleTracksAll_7.csv',index=False)
+        long_df.to_csv('./JolleTracksHourly_7.csv',index=False)
 
     if False:
         fig,(ax,ax2,ax3) = plt.subplots(1,3)
