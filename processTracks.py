@@ -15,10 +15,11 @@ warnings.filterwarnings('ignore')
 #in_file = sys.argv[1]
 #vid_file = sys.argv[2]
 
+PIX_SCALE = 670 / 27 ## Distance between floor edges in pixels, cms
 ## Reads in array of xy coordints (frames,2)
 ## spirts out array of polar coordints (frames,2)
 def xy_to_polar(a,center=(400,400)):
-    a_polar = np.empty(a.shape)
+    a_polar = np.full(a.shape,np.nan)
     dx = a[:,0] - center[0]
     dy = a[:,1] - center[1]
     a_polar[:,0] = np.sqrt(dx**2 + dy**2)
@@ -50,7 +51,7 @@ def get_tracks(in_file):
     n_fish = len(fishIDs)
     n_frames = max(track_df.frame) + 1
     track_array = np.full([n_frames,n_fish,2],np.nan)
-    track_polar = np.array(track_array)
+    track_polar = np.full(np.shape(track_array),np.nan)
 
     for f in range(n_fish):
         f_df = track_df[track_df.id == fishIDs[f]]
@@ -63,7 +64,6 @@ def get_tracks(in_file):
 
         
         track_polar[indices,f] = xy_to_polar(xy_f)
-
 
     #track_array[track_array == -1] = np.nan
     return track_array,track_polar,[n_frames,n_fish,fishIDs]
@@ -130,8 +130,9 @@ def deep_clean_track(track_array,min_dist = 20,drop_close = False):
 
     clean_array[np.isnan(velocity_array)] = np.nan 
     if drop_close:
+        #import pdb;pdb.set_trace()
         for f in range(n_fish):
-            too_close = np.min(distance_array[:,f],axis=1) < min_dist
+            too_close = np.nanmin(distance_array[:,f],axis=1) < min_dist
             clean_array[too_close,f] = np.nan 
             velocity_array[too_close,f] = np.nan
             distance_array[too_close,f] = np.nan
@@ -192,6 +193,7 @@ def get_stats(track_array,track_polar):
     distance_array = np.full([n_frames,n_fish,n_fish],np.nan)
 
     MAX_VEL = 200
+    MIN_VEL = 25 ## 25 pixels corresponds to roughly 1cm
     MAX_THETA =  np.pi/4
 
 ## I might be able to speed these up:
@@ -207,7 +209,7 @@ def get_stats(track_array,track_polar):
 
     diff_array = np.diff(track_array,axis=0,prepend=np.nan)
     diff_array[np.isnan(velocity_array)] = np.nan
-    #diff_array[velocity_array > MAX_VEL] = np.nan
+    diff_array[velocity_array < MIN_VEL] = np.nan
 
     angle_array = np.arctan2(diff_array[:,:,0],diff_array[:,:,1])/np.pi*180
 
@@ -264,13 +266,18 @@ def get_stats(track_array,track_polar):
         vel_i = velocity_array[:,i]
         vel_j = velocity_array[:,j]
 
+        ang_i = angle_array[:,i]
+        ang_j = angle_array[:,j]
         good_indices = (~np.isnan(vel_i)) & (~np.isnan(vel_j))
+        good_indices_a = (~np.isnan(ang_i)) & (~np.isnan(ang_j))
         if sum(good_indices) > 100:
             r_stat,p = pearsonr(vel_i[good_indices],vel_j[good_indices])
             #good_indices1 = good_indices[1:]
-            r_stat2,p2 = pearsonr(angle_array[good_indices,i],angle_array[good_indices,j])
         else:
             r_stat,p = np.nan,np.nan
+        if sum(good_indices_a) > 100:
+            r_stat2,p2 = pearsonr(angle_array[good_indices_a,i],angle_array[good_indices_a,j])
+        else:
             r_stat2,p2 = np.nan,np.nan
         stat_array[2,i,j] = r_stat
         stat_array[4,i,j] = r_stat2
@@ -446,6 +453,8 @@ if __name__ == '__main__':
     for csv_file in tqdm(sorted(os.listdir(csv_dir))):
         if 'GR' in csv_file:
             continue
+        if 'csv' not in csv_file:
+            continue
         in_list = False
         for p in pi_dict.keys():
             if p in csv_file:
@@ -469,6 +478,7 @@ if __name__ == '__main__':
 ## Build hourly dicts
         binned_tracks = bin_tracks(track_array)
         binned_polars = bin_tracks(track_polar)
+
         for t in range(len(binned_tracks)):
             binned_stats,_ = get_stats(binned_tracks[t],binned_polars[t])
 
@@ -516,8 +526,8 @@ if __name__ == '__main__':
     long_df = long_df[new_cols_]
 
     if True:
-        csv_df.to_csv('./JolleTracksAll_5.csv',index=False)
-        long_df.to_csv('./JolleTracksHourly_5.csv',index=False)
+        csv_df.to_csv('./JolleTracksAll_7.csv',index=False)
+        long_df.to_csv('./JolleTracksHourly_7.csv',index=False)
 
     if False:
         fig,(ax,ax2,ax3) = plt.subplots(1,3)
