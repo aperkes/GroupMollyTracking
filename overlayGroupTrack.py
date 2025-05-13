@@ -540,7 +540,6 @@ if __name__ == '__main__':
                         r = 1 
                         if np.isnan(velocity_array[t-l+1,f]) or np.sum(np.isnan(a[f,t-l])) > 0:
                             break
-                        print(a[f,t-l,0],a[f,t-l,1])
                         cv2.circle(frame,(int(a[f,t-l,0]),int(a[f,t-l,1])),radius=r,color=cor,thickness=-1)
             if visualize:
                 cv2.imshow('Overlay',frame)
