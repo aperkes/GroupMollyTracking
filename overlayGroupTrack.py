@@ -65,6 +65,11 @@ def get_tracks(in_file):
         
         track_polar[indices,f] = xy_to_polar(xy_f)
 
+    track_polar[track_array[:,:,0] < 0] = np.nan
+    track_polar[track_array[:,:,0] > 800] = np.nan
+
+    track_array[track_array[:,:,0] < 0] = np.nan
+    track_array[track_array[:,:,0] > 800] = np.nan
     #track_array[track_array == -1] = np.nan
     return track_array,track_polar,[n_frames,n_fish,fishIDs]
 
@@ -428,7 +433,7 @@ def plot_video(track_array,video_file):
         cap.release()
 
 ## Extract exp day and pi from video
-def get_meta(csv_file,csv_dir = './GroupCSVs-filtered'):
+def get_meta(csv_file,csv_dir = './groupCSVs-filtered'):
     pi = csv_file.split('_')[1]
     ds = csv_file.split('_')[-1].replace('.csv','')
     all_pi_csvs = []
@@ -474,9 +479,8 @@ if __name__ == '__main__':
     
     n_fish = track_array.shape[1]
     
-    a = np.swapaxes(track_array,1,0).astype(int)
-
-
+    a = np.swapaxes(track_array,1,0)
+     
     cap = cv2.VideoCapture(vid_file)
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -524,19 +528,20 @@ if __name__ == '__main__':
                 cv2.putText(frame,str(v_counts[f]),(x,y2),font, font_scale,cor,font_thickness)
             if np.sum(a[:,t]) != 0:
                 for f in range(n_fish):
-                    if np.sum(a[f,t]) == 0:
+                    if np.sum(a[f,t]) == 0 or np.sum(np.isnan(a[f,t])) > 0:
                         continue
                     if np.isnan(velocity_array[t+1,f]):
                         cor = [0,0,0]
                     else:
                         cor = fish_colors[f]
-                    cv2.circle(frame,(a[f,t,0],a[f,t,1]),radius=rad+5,color=cor,thickness=1)
+                    cv2.circle(frame,(int(a[f,t,0]),int(a[f,t,1])),radius=rad+5,color=cor,thickness=1)
 
                     for l in range(1,min(t,tail_length)):
                         r = 1 
-                        if np.isnan(velocity_array[t-l+1,f]):
+                        if np.isnan(velocity_array[t-l+1,f]) or np.sum(np.isnan(a[f,t-l])) > 0:
                             break
-                        cv2.circle(frame,(a[f,t-l,0],a[f,t-l,1]),radius=r,color=cor,thickness=-1)
+                        print(a[f,t-l,0],a[f,t-l,1])
+                        cv2.circle(frame,(int(a[f,t-l,0]),int(a[f,t-l,1])),radius=r,color=cor,thickness=-1)
             if visualize:
                 cv2.imshow('Overlay',frame)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
