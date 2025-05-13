@@ -9,5 +9,4 @@ for i in $(cat clips_to_check.txt); do
 ### overlay tracks 
     i_file=$(basename $i)
     python overlayGroupTrack.py ./working_dir/$i_file
-    break
     done
