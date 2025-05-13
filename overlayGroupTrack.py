@@ -107,7 +107,7 @@ def get_distance_array(track_array):
         distance_array[good_indices,j,i] = distance_array[good_indices,i,j]
     return distance_array
 
-def get_velocity_array(track_array,MAX_VEL = 200):
+def get_velocity_array(track_array,MAX_VEL = 300):
     n_frames,n_fish,_ = np.shape(track_array)
     velocity_array = np.full([n_frames,n_fish],np.nan)
     for n in range(n_fish):
@@ -118,11 +118,11 @@ def get_velocity_array(track_array,MAX_VEL = 200):
     return velocity_array 
 ## End COpy ###
 
-def deep_clean_track(track_array,min_dist = 20,drop_close = False):
+def deep_clean_track(track_array,min_dist = 20,MAX_VEL = 300,drop_close = False):
     clean_array = clean_track(track_array) ## This drops peaks
     n_frames,n_fish,_ = np.shape(clean_array)
     ## Drop anywhere velocity == 0 
-    velocity_array = get_velocity_array(clean_array) 
+    velocity_array = get_velocity_array(clean_array,MAX_VEL = MAX_VEL) 
     distance_array = get_distance_array(clean_array)
 
     ## add np.nan anywhere tracks are likely wrong/inconsistent
@@ -133,9 +133,13 @@ def deep_clean_track(track_array,min_dist = 20,drop_close = False):
         #import pdb;pdb.set_trace()
         for f in range(n_fish):
             too_close = np.nanmin(distance_array[:,f],axis=1) < min_dist
-            clean_array[too_close,f] = np.nan 
+            too_close_shifted = np.zeros_like(too_close)
+            too_close_shifted[1:] = too_close[:-1]
+
+            #clean_array[too_close,f] = np.nan 
             velocity_array[too_close,f] = np.nan
-            distance_array[too_close,f] = np.nan
+            velocity_array[too_close_shifted,f] = np.nan
+            #distance_array[too_close,f] = np.nan
     return clean_array,velocity_array,distance_array
 
 def bin_tracks(track_array,bin_size=3600):
@@ -449,13 +453,13 @@ if __name__ == '__main__':
 
     track_array,track_polar,_ = get_tracks(csv_file)
     #clean_array = clean_track(track_array)
-    clean_array,_1,_2 = deep_clean_track(track_array)
+    clean_array,velocity_array,distance_array = deep_clean_track(track_array,min_dist=50,drop_close=True)
     #clean_polar = clean_track(track_polar)
     track_polar[np.isnan(clean_array)] = np.nan
     #track_array,track_polar = clean_array,clean_polar
     track_array = clean_array
-    _,stat_arrays = get_stats(track_array,track_polar)
-    velocity_array,angMom_array,distance_array = stat_arrays
+    #_,stat_arrays = get_stats(track_array,track_polar)
+    #velocity_array,angMom_array,distance_array = stat_arrays
 
     pi,day = get_meta(csv_file)
     #import pdb;pdb.set_trace()
@@ -471,46 +475,69 @@ if __name__ == '__main__':
     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 
-    output = 'test2.mp4'
-    visualize = True
+    output = vid_file.replace('.mp4','.overlay.mp4') 
+    visualize = False
     out = cv2.VideoWriter(output,fourcc,fps, (frame_width,frame_height),isColor=True)
 
     t = 0
     tail_length = 10
     fish_colors = [(0,0,255),(255,255,0),(0,255,255),(255,0,255)]
-    while(cap.isOpened()):
-        ret, frame = cap.read()
-        rad = 5
-        if not ret or t >= a.shape[1]-1:
-            break
-        gray = cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
 
-        if np.sum(a[:,t]) != 0:
+    start_ts = [3600,18000,32400]
+    check_frames = np.zeros(len(track_array))
+    check_frames[3600:3700] = 1
+    check_frames[18000:18100] = 1
+    check_frames[32400:32500] = 1
+
+    seg_length = 100
+    rad = 5
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 1
+    font_thickness = 2
+    check_array = track_array[check_frames.astype(bool)]
+    check_velocity = velocity_array[check_frames.astype(bool)]
+    for i in range(len(start_ts)): 
+        t = start_ts[i]
+        cap.set(cv2.CAP_PROP_POS_FRAMES, t)
+        f_counts = np.sum(~np.isnan(check_array[:,:,0]),axis=0)
+        v_counts = np.sum(~np.isnan(check_velocity),axis=0)
+        while t < start_ts[i] + seg_length:
+            ret, frame = cap.read()
+            cv2.putText(frame,str(t),(650,30),font, font_scale,(255,255,255),font_thickness)
+            if not ret or t >= a.shape[1]-1:
+                break
+
             for f in range(n_fish):
-                if np.sum(a[f,t]) == 0:
-                    continue
-                if np.isnan(velocity_array[t+1,f]):
-                    cor = [0,0,0]
-                else:
-                    cor = fish_colors[f]
-                cv2.circle(frame,(a[f,t,0],a[f,t,1]),radius=rad+5,color=cor,thickness=1)
+                cor = fish_colors[f]
+                x = 50 + 150*f
+                y = 30 
+                y2 = 770
+                cv2.putText(frame,str(f_counts[f]),(x,y),font, font_scale,cor,font_thickness)
+                cv2.putText(frame,str(v_counts[f]),(x,y2),font, font_scale,cor,font_thickness)
+            if np.sum(a[:,t]) != 0:
+                for f in range(n_fish):
+                    if np.sum(a[f,t]) == 0:
+                        continue
+                    if np.isnan(velocity_array[t+1,f]):
+                        cor = [0,0,0]
+                    else:
+                        cor = fish_colors[f]
+                    cv2.circle(frame,(a[f,t,0],a[f,t,1]),radius=rad+5,color=cor,thickness=1)
 
-                for l in range(1,min(t,tail_length)):
-                    r = 1 
-                    if np.isnan(velocity_array[t-l+1,f]):
-                        break
-                    cv2.circle(frame,(a[f,t-l,0],a[f,t-l,1]),radius=r,color=cor,thickness=-1)
-        if visualize:
-            cv2.imshow('Overlay',frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                visualize = False
+                    for l in range(1,min(t,tail_length)):
+                        r = 1 
+                        if np.isnan(velocity_array[t-l+1,f]):
+                            break
+                        cv2.circle(frame,(a[f,t-l,0],a[f,t-l,1]),radius=r,color=cor,thickness=-1)
+            if visualize:
+                cv2.imshow('Overlay',frame)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    visualize = False
 
-        out.write(frame)
+            out.write(frame)
 
-        t += 1
+            t += 1
 
-        if t > 5000:
-            break
 
     out.release()
 
