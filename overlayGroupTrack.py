@@ -448,8 +448,16 @@ if __name__ == '__main__':
 
 
 ### MAke sure this matches process_tracks so that it's consistent
-    csv_file = sys.argv[1]
-    vid_file = sys.argv[2]
+    vid_file = sys.argv[1]
+    if len(sys.argv) > 2:
+        csv_file = sys.argv[2]
+    else:
+        base_vid = vid_file.split('/')[-1]
+        pi,datestuff = base_vid.split('_')
+        date=datestuff.replace('.mp4','')
+        csv_file = './groupCSVs-filtered/groupedgecrop_' + pi + '_group_full_' + date + '.csv'
+
+    print(vid_file,csv_file)
 
     track_array,track_polar,_ = get_tracks(csv_file)
     #clean_array = clean_track(track_array)
