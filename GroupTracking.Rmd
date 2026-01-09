@@ -1,0 +1,1731 @@
+---
+title: "GroupTracking Stats"
+author: "Author"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(digits = 7)
+```
+
+## Initializing
+First, we load all the data and do some pre-processing. 
+
+***BE SURE TO UPDATE YOUR PATH BELOW!!***
+
+Note that, other than ggplot2 and patchwork for plotting, all packages are defined explicitly. 
+You need dplyr,zoo,tidyr,nlme,MCMCglmm,zoo,matrixStats,viridis,corrplot,reshape2,rlang,scales
+
+
+```{r initialization}
+## plotting libraries must be loaded, everything else is explicity
+library("ggplot2") 
+library("patchwork") 
+
+### Make sure you put the folder that contains script ### 
+setwd("~/Documents/Scripts/GroupMollyTracking/")
+
+
+## Import hourly data
+
+indv <- read.csv("GroupTracks.csv")
+indv$ExpDay <- as.integer(indv$ExpDay)
+
+indv$dist_meanScale <- scale(indv$dist_mean)
+indv$dist_meanScale <- scale(indv$dist_mean)
+indv$vel_meanScale <- scale(indv$vel_mean)
+indv$pDist_meanScale <- scale(indv$pDist_mean)
+
+indv$velC_meanScale <- scale(indv$velC_mean)
+indv$pDistC_meanScale <- scale(indv$pDistC_mean)
+indv$angleC_meanScale <- scale(indv$angleC_mean)
+
+
+indv$week <- indv$ExpDay %/% 7 ## Is this integer division
+indv$triday <- indv$ExpDay %/% 3
+
+piDays <- indv |>
+  dplyr::group_by(Pi) |>
+  dplyr::summarize(max = max(ExpDay))
+
+piDays
+indv.com <- indv
+
+## Import hourly data
+
+hourly <- read.csv("GroupTracksHourly.csv")
+hourly$Hour <- as.integer(hourly$Hour)
+hourly$ExpDay <- as.integer(hourly$ExpDay)
+
+good_hourly <- hourly[hourly$Pi != "pi34",]
+good_hourly <- good_hourly[good_hourly$Pi != "pi41",]
+long_hourly54 <- good_hourly |>
+  dplyr::filter(Pi %in% piDays[piDays$max >= 54,]$Pi)
+indv.hourly54 <- long_hourly54[long_hourly54$ExpDay <= 54,]
+
+indv.hourly54$dist_meanScale <- scale(indv.hourly54$dist_mean_)
+indv.hourly54$vel_meanScale <- scale(indv.hourly54$vel_mean_)
+indv.hourly54$pDist_meanScale <- scale(indv.hourly54$pDist_mean_)
+
+indv.hourly54$velC_meanScale <- scale(indv.hourly54$velC_mean_)
+indv.hourly54$pDistC_meanScale <- scale(indv.hourly54$pDistC_mean_)
+indv.hourly54$angleC_meanScale <- scale(indv.hourly54$angleC_mean_)
+indv.hourly54$upper_velScale <- scale(indv.hourly54$upper_vel_)
+indv.hourly54$prop_activeScale <- scale(indv.hourly54$prop_active_)
+
+## Bring in size df
+
+sizes.df <- read.csv("size_df.csv")
+sizes.df <- tidyr::drop_na(sizes.df)
+sizes.pis <- unique(sizes.df$Pi)
+
+indv.com$size_Fit <- 0
+indv.hourly54$size_Fit <- 0
+for (p in sizes.pis) {
+  
+  if (p == 'pi32') {
+    continue
+  }
+  print(p)
+  model.piSize <- lm(mean_size ~ ExpDay,data=sizes.df[sizes.df$Pi == p,])
+  #print(summary(model.piSize))
+  indv.com[indv.com$Pi == p,'size_Fit'] <- predict(model.piSize,indv.com[indv.com$Pi == p,])
+  indv.hourly54[indv.hourly54$Pi == p,'size_Fit'] <- predict(model.piSize,indv.hourly54[indv.hourly54$Pi == p,])
+  if (p == 'pi11') {
+    indv.com[indv.com$Pi == 'pi32','size_Fit'] <- predict(model.piSize,indv.com[indv.com$Pi == 'pi32',])
+    indv.hourly54[indv.hourly54$Pi == 'pi32','size_Fit'] <- predict(model.piSize,indv.hourly54[indv.hourly54$Pi == 'pi32',])
+  }
+}
+
+
+indv.com[,'vel_meanSize'] <- indv.com$vel_mean / indv.com$size_Fit
+
+indv.hourly54[,'vel_meanSize'] <- indv.hourly54$vel_mean / indv.hourly54$size_Fit
+indv.hourly54[,'vel_meanSize_'] <- indv.hourly54$vel_mean_ / indv.hourly54$size_Fit
+
+# This will only work if it's complete.  
+indv.hourly54$vel_sizeScale <- scale(indv.hourly54$vel_meanSize_)
+
+indv.hourly54$ExpDay_factor <- as.factor(indv.hourly54$ExpDay)
+
+
+## Make long df for sliding data
+long_data54 <- indv.com |>
+  dplyr::filter(Pi %in% piDays[piDays$max >= 54,]$Pi)
+indv.long54 <- long_data54[long_data54$ExpDay <= 54,]
+
+## Define priors used throughout for MCMCglm
+prior.id.slope <- list(R = list(V = 1, nu = 0.002),
+                       G = list(G1=list(V = diag(2), nu = 0.002, alpha.mu = c(0,0),  alpha.V = diag(2)*25^2)))
+
+
+
+
+### Define prior for heterogeneous residual variance
+total_days <- nlevels(as.factor(indv.long54$ExpDay))
+
+## Because the data is scaled, we can use this prior throughout
+prior.best <- list(R = list(V = diag(total_days)*0.5,nu = total_days + 0.002),
+                   G = list(G1=list(V = diag(2)*0.5, nu = 2.002, alpha.mu = c(0,0),  alpha.V = diag(2)*25^2)))
+
+## We use this for behavioral correlationb elow
+prior.cov6 <- list(R = list(V = diag(6), nu = 6.002),
+                   G = list(G1=list(V = diag(6), nu = 6.002, alpha.mu = rep(0,6), alpha.V = 1000*diag(6))))
+```
+
+## Build functions
+
+There are several functions that most of the heavy lifting below. 
+This is where most of the statistical methods actually occur. 
+You can see all the details here
+
+```{r Functions}
+n_days <- 1 ## This is the day resolution, you can go fewer
+
+## Run the model and extract various components needed for plotting below. 
+func.ndays.intercepts.het <- function(depVar,df,day_bin=1,prior.cov = prior.best,verbose = F,hourly = T,n_days=1) {
+  # select only those IDs in that vector & only keep up to obs 70 & make obs 1 = 0
+  
+  max_days <- max(df$ExpDay) ## It's 0 indexed
+  indv.df <- df
+  
+  n_pis <- length(unique(df$Pi))
+  rpt <- list()
+  ci.rpt <- list()
+  
+  post.among <- list()
+  ci.among <- list()
+  post.within <- list()
+  ci.within <- list()
+  
+  #blup <- list()
+  ### Define fixed and random formulas for given dep variable
+  if (hourly) {
+    fixed <- as.formula(paste(depVar,"~ ExpDay + Hour",sep=""))
+  } else {
+    fixed <- as.formula(paste(depVar,"~ ExpDay",sep=""))
+  }
+  
+  random <- as.formula(paste('~us(1 + ExpDay):Pi',sep=''))
+  
+  ## Need day as a factor for the rcov line
+  indv.df$ExpDay_factor <- as.factor(indv.df$ExpDay)
+  model.het <- MCMCglmm::MCMCglmm(fixed = fixed, 
+                        random = random, 
+                        rcov = ~idh(ExpDay_factor):units, ## use this line for het. residual variance
+                        data = indv.df, 
+                        family = "gaussian",
+                        pr = T,
+                        prior = prior.cov, ## Replace this with prior.id.slope for homo residual variance
+                        nitt=310000, burnin = 10000, thin = 200, 
+                        verbose = verbose)  
+  
+  sigma.a0 <- model.het$VCV[,"(Intercept):(Intercept).Pi"]
+  sigma.a1 <- model.het$VCV[,"ExpDay:ExpDay.Pi"]
+  
+  rho <- model.het$VCV[,"(Intercept):ExpDay.Pi"] ### whole covariance term, not just rho
+  
+  ### Calculate conditional rpt at each point x
+  for (x in seq(0,max_days,day_bin)) {
+    ## Grab residual at that day
+    e_col <- paste("ExpDay_factor",x,".units",sep='')
+    sigma.e.x <- model.het$VCV[,e_col]
+    
+    sigma.among.x <- ( sigma.a0 + sigma.a1*(x**2) + 2*rho*x )
+    rpt.x <- sigma.among.x / 
+      ( sigma.among.x + sigma.e.x)
+    
+    rpt <- c(rpt,median(rpt.x))
+    ci.x <- coda::HPDinterval(rpt.x)[1:2]
+    ci.rpt <- c(ci.rpt,ci.x)
+    
+    post.among.x <- median(sigma.among.x) ## 
+    post.among <- c(post.among,post.among.x)
+    
+    ci.among.x <- coda::HPDinterval(sigma.among.x)[1:2]
+    ci.among <- c(ci.among,ci.among.x)
+    
+    post.within.x <- median(sigma.e.x)
+    post.within <- c(post.within,post.within.x)
+    
+    ci.within.x <- coda::HPDinterval(sigma.e.x)[1:2]
+    ci.within <- c(ci.within,ci.within.x)
+    
+    'this pulls out the individual intercepts and adds in the overall intercepts
+    so that way these numbers are absolute values, as opposed to differences from overall'
+    
+    #blup <- c(blup,intercepts.n)
+  }
+    intercepts <- unname(matrixStats::colMedians(model.het$Sol[,3:(3+n_pis-1)]) + median(model.het$Sol[,1]))
+  #blup <- unlist(blup)
+  rpt <- unlist(rpt)
+  dates <- seq(0,54,day_bin) ## 
+  
+  ## Switches back to old syntax here
+  ci.rpt <- matrix(unlist(ci.rpt), nrow = length(dates), byrow = T)
+  ci.id <- matrix(unlist(ci.among), nrow = length(dates), byrow = T)
+  ci.w <- matrix(unlist(ci.within), nrow = length(dates), byrow = T)      
+  post.id <- unlist(post.among)
+  post.w <- unlist(post.within)
+  
+  
+  rpt.slice.wide <- data.frame(dates, "rpt" = rpt, "lower.rpt" = ci.rpt[,1], "upper.rpt" = ci.rpt[,2],
+                               "post.id" = post.id, "lower.id" = ci.id[,1], "upper.id" = ci.id[,2], 
+                               "post.w" = post.w, "lower.w" = ci.w[,1], "upper.w" = ci.w[,2])
+  
+  rpt.slice.long <- data.frame("date" = rep(dates, 3), 
+                               "type" = rep(c("rpt", "id", "within"), each = length(dates)),
+                               "variance" = unname(c(rpt, post.id, post.w)),
+                               "lower" = unname(c(ci.rpt[,1], ci.id[,1], ci.w[,1])),
+                               "upper" = unname(c(ci.rpt[,2], ci.id[,2], ci.w[,2])))
+  
+  
+  rpt.slice.rpt <- rpt.slice.long[rpt.slice.long$type == 'rpt',]
+  
+  #n_pis <- length(colnames(col.day0$Sol)) / 2 - 1
+  ### This is very dataset specific, you may need to check it: 
+  ids <- colnames(model.het$Sol)[3:(3 + n_pis - 1)] ## Make sure this matches below
+  ids <- substr(ids, 16, 19)
+  
+  dates.rep <- rep(dates, each = n_pis)
+  picomp <- rep(ids, length(dates))
+  
+  pred.intercepts <- data.frame(dates.rep, picomp, intercepts)
+  
+  plt.repeat <- 0
+  
+  pred.rank <- pred.intercepts |>
+    dplyr::filter(dates.rep == 0) |>
+    dplyr::mutate(ranking = rank(intercepts)) |>
+    dplyr::select(picomp, ranking)
+  
+  pred.rank <- dplyr::left_join(pred.intercepts, pred.rank) |>
+    dplyr::arrange(ranking)
+  plasma_pal <- viridis::plasma(n = 30)
+  plasma_pal <- plasma_pal[1:26]
+  
+  
+  blup.plot <- 0
+  rpt.plot <- 0
+  
+  plt.repeat <- 0
+  plt.day <- 0
+  return(list(plt.day,plt.repeat,rpt.plot,blup.plot,rpt.slice.wide,pred.rank,model.het))
+}
+
+## Simple function to get unscaled estimates from model 
+func.unscaleModel <- function(model,depVar) {
+  depScale <- sd(indv.hourly54[,depVar],na.rm=T)
+  coefs <- summary(model)[["solutions"]][2:3,1:3] * depScale
+  p_vals <- summary(model)[["solutions"]][2:3,5]
+  return(list(coefs,p_vals))
+  
+}
+
+## Plot sliding means for given behavior
+func.slidingMean <- function(depVar,df,n_days,use_scale = F,pix_scale = 23/800) {
+  if (!use_scale) {
+    pix_scale <- 1
+  }
+  ranking <- ranking.df$ranking
+  ranking.df$Pi <- ranking.df$picomp
+  
+  indv.slidingMean <- dplyr::arrange(df,Pi,ExpDay) |>
+    dplyr::mutate(rollingVar=zoo::rollapply(!! rlang::ensym(depVar),n_days,mean,align='left',fill=NA))
+  
+  indv.slidingMean <- merge(indv.slidingMean,ranking.df,by = "Pi")
+  
+  last_day <- max(indv.slidingMean$ExpDay) - 5
+  indv.slidingMean.clipped <- indv.slidingMean[indv.slidingMean$ExpDay <= last_day,]
+  
+  breaks <- seq(0,max(indv.slidingMean$ExpDay),10)
+  
+  plot.sliding <- ggplot(indv.slidingMean.clipped,aes(x=ExpDay,y=rollingVar * pix_scale,group=Pi,color=ranking)) + 
+    geom_line() + 
+    ylab(paste('Rolling',depVar)) +
+    theme_classic() + 
+    scale_color_viridis_c(option = "plasma") +
+    scale_x_continuous(breaks = breaks, labels = breaks) +
+    theme(legend.position = "none",
+          rect=element_rect(fill="transparent"),
+          panel.background=element_rect(fill="transparent"),
+          axis.line = element_line(linewidth = 0.5, colour = "black"),
+          axis.ticks = element_line(colour = "black"),
+          axis.text = element_text(size = 12, colour = "black"),
+          axis.title = element_text(size = 14, face = "bold", colour = "black"),
+          plot.title = element_text(hjust = 0.5, size = 0)) 
+  plot.raw <- ggplot(indv.slidingMean,aes(x=ExpDay,y=!! rlang::ensym(depVar),group=Pi,color=ranking)) + 
+    geom_line() + 
+    ylab(paste('Rolling',depVar)) +
+    theme_classic() + 
+    scale_color_viridis_c(option = "plasma") +
+    scale_x_continuous(breaks = breaks, labels = breaks) +
+    theme(legend.position = "none",
+          rect=element_rect(fill="transparent"),
+          panel.background=element_rect(fill="transparent"),
+          axis.line = element_line(linewidth = 0.5, colour = "black"),
+          axis.ticks = element_line(colour = "black"),
+          axis.text = element_text(size = 12, colour = "black"),
+          axis.title = element_text(size = 14, face = "bold", colour = "black"),
+          plot.title = element_text(hjust = 0.5, size = 0)) 
+  return(list(plot.sliding,indv.slidingMean,plot.raw))
+}
+
+## Make repeatability plot
+func.rpt.plot <- function(rpt.data,n_days=1,components=F) {
+  dates <- seq(0,54,n_days)
+  print(rpt.data)
+  print(dates)
+  bar_scale <- max(rpt.data$post.id) + max(rpt.data$post.w)
+  print(bar_scale)
+  bar_scale <- 2
+  #foo <- plots.vel[[5]]
+  rpt.data$lower.id_ <- rpt.data$lower.id / bar_scale
+  rpt.data$upper.id_ <- rpt.data$upper.id / bar_scale
+  rpt.data$post.id_ <- rpt.data$post.id / bar_scale
+  rpt.data$lower.w_ <- rpt.data$lower.w / bar_scale
+  rpt.data$upper.w_ <- rpt.data$upper.w / bar_scale
+  rpt.data$post.w_ <- rpt.data$post.w / bar_scale
+  
+  n_dates = length(dates)
+  if (n_dates > 10) { 
+    breaks <- seq(0,max(dates),10)
+  } else {
+    breaks <- dates
+  }  
+  
+  if (components == T) {
+    rpt.plot <- ggplot(rpt.data, aes(x = dates)) +
+      geom_line(aes(x = dates-0.5, y = post.id_), color = "lightsalmon") +
+      geom_point(aes(x = dates-0.5, y = post.id_), shape = 21, color = "lightsalmon", fill = "lightsalmon", size = 1) +
+      
+      #geom_errorbar(aes(x = dates+0.5, ymin = lower.w_, ymax = upper.w_, width = 1, color = "#000000")) +
+      geom_line(aes(x = dates+0.5, y = post.w_), color = "purple") +
+      geom_point(aes(x = dates + 0.5, y = post.w_), shape = 21, color = "purple", fill = "purple", size = 1) +
+      
+      geom_point(aes(y = rpt), color = "black",fill="black", size = 1) +
+      geom_line(aes(x=dates, y = rpt), color = "black") +
+      geom_errorbar(aes(ymin = lower.rpt, ymax = upper.rpt, width = 1), color = "black") 
+  } else {
+    rpt.plot <- ggplot(rpt.data, aes(x = dates)) +
+      geom_point(aes(y = rpt), color = "black", size = 1) +
+      geom_line(aes(x=dates, y = rpt), color = "black") +
+      geom_errorbar(aes(ymin = lower.rpt, ymax = upper.rpt, width = 1), color = "black") 
+  }
+  rpt.plot <- rpt.plot + 
+    scale_x_continuous(breaks = breaks, labels = breaks,expand = expansion(mult = .02)) +
+    scale_y_continuous(name = "Variance estimate",limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1.0)) +
+    labs(x = "Day",
+         color = "Legend") +
+    #scale_color_manual(name = "", 
+    #values =c("#000000",  "#959595",  "#CCCCCC"),
+    #values =c("purple",  "lightsalmon",  "black"),
+    #labels = c("Repeatability", "Among-Group", "Within-Group")) +
+    theme_classic() +
+    theme(legend.position = c(0.2, 0.93),
+          legend.key.size = unit(0.3, 'cm'),
+          legend.text = element_text(size = 6),
+          axis.text.x = element_text(size = 8),
+          axis.title.x = element_text(size = 10),
+          axis.text.y = element_text(size = 8),
+          axis.title.y = element_text(size = 10)) #+
+  
+  return(rpt.plot)
+}
+
+## Function to make a shuffled dataframe
+func.shuffle.df <- function(df) {
+  
+  df.shuffle <- df
+  df.shuffle$ShuffledPi <- 0
+  
+  for (i in seq(0,max(df.shuffle$ExpDay))) { 
+    df.shuffle[df.shuffle$ExpDay == i,'ShuffledPi'] <- sample(df.shuffle[df.shuffle$ExpDay == i,'Pi'])
+  }
+  
+  df.shuffle$ShuffledPi
+  df.shuffle$Pi <- df.shuffle$ShuffledPi
+  
+  return(df.shuffle)
+}
+
+### Simplified function for shuffling and calculating rpt. 
+func.shuffled.rpt.i <- function(i,depVar="dist_mean",day_bin=1,prior.cov=prior.best,hourly=T) {
+  # select only those IDs in that vector & only keep up to obs 70 & make obs 1 = 0
+  set.seed(i)
+  if (hourly) { 
+    df.shuffled <- func.shuffle.df(indv.hourly54)
+  } else { 
+    df.shuffled <- func.shuffle.df(indv.long54)
+  }
+  #depVar <- "dist_mean"
+  #day_bin <- 1
+  max_days <- 54
+  
+  n_pis <- length(unique(df.shuffled$Pi))
+  rpt <- list()
+  ci.rpt <- list()
+  post.id <- list()
+  ci.id <- list()
+  post.w <- list()
+  ci.w <- list()
+  blup <- list()
+  
+  ### Define fixed and random formulas for given dep variable
+  fixed <- as.formula(paste(depVar,"~ ExpDay",sep=""))
+  random <- as.formula(paste('~us(1 + ExpDay):Pi',sep=''))
+  
+  ## Need day as a factor for the rcov line
+  df.shuffled$ExpDay_factor <- as.factor(df.shuffled$ExpDay)
+  model.het <- MCMCglmm::MCMCglmm(fixed = fixed, 
+                        random = random, 
+                        rcov = ~idh(ExpDay_factor):units, ## use this line for het. residual variance
+                        data = df.shuffled, 
+                        family = "gaussian",
+                        pr = T,
+                        prior = prior.cov,
+                        nitt=310000, burnin = 10000, thin = 200, 
+                        verbose = F)  
+  
+  sigma.a0 <- model.het$VCV[,"(Intercept):(Intercept).Pi"]
+  
+  sigma.a1 <- model.het$VCV[,"ExpDay:ExpDay.Pi"]
+  
+  ## Using fixed individual variance
+  #sigma.e <- model.het$VCV[,"units"]
+  
+  rho <- model.het$VCV[,"(Intercept):ExpDay.Pi"] ### this is actually the whole covariance term, not just rho
+  
+  ### Calculate conditional rpt at each point x
+  for (x in seq(0,max_days,day_bin)) {
+    ## Grab residual at that day
+    e_col <- paste("ExpDay_factor",x,".units",sep='')
+    sigma.e <- model.het$VCV[,e_col]
+    
+    rpt.x <- ( sigma.a0 + sigma.a1*(x**2) + 2*rho*x ) / 
+      ( sigma.a0 + sigma.a1*(x**2) + 2*rho*x + sigma.e)
+    
+    rpt <- c(rpt,median(rpt.x)) # median is preferred to mode
+  }
+  rpt <- unlist(rpt)
+  return(rpt) }
+
+## Do the pairwise correlations for all the bins for a given behavior
+func.ndays.predict <- function(depVar,df,n_days=5,hourly=F) {
+  #df <- indv.long54
+  #df$velC_scale <- df$velC_mean * 100
+  
+  #df
+  ## build bin column
+  df$bin <- df$ExpDay %/% n_days
+  print(df)
+  ## Can I get away with not dropping values? 
+  #df <- df[df$Pi != 'pi31',] ## This one has missing values. 
+  
+  maxes <- df %>%
+    group_by(Pi) %>%
+    summarise(max = max(bin, na.rm=TRUE))
+  
+  max_days = max(unique(df$ExpDay))
+  max_bin = max_days %/% n_days
+  ## Generating wide programatically is tricky...
+  
+  ## This is sort of a trick, it works for any n_days less than 11
+  if (hourly) { 
+    df.wide <- df %>%
+      mutate(
+        obs.day = case_when(
+          ExpDay %in% seq(0,max_days,n_days) ~ 1 %% n_days + 1, 
+          ExpDay %in% seq(1,max_days,n_days) ~ 2 %% n_days + 1, 
+          ExpDay %in% seq(2,max_days,n_days) ~ 3 %% n_days + 1, 
+          ExpDay %in% seq(3,max_days,n_days) ~ 4 %% n_days + 1, 
+          ExpDay %in% seq(4,max_days,n_days) ~ 5 %% n_days + 1, 
+          ExpDay %in% seq(5,max_days,n_days) ~ 6 %% n_days + 1, 
+          ExpDay %in% seq(6,max_days,n_days) ~ 7 %% n_days + 1, 
+          ExpDay %in% seq(7,max_days,n_days) ~ 8 %% n_days + 1, 
+          ExpDay %in% seq(8,max_days,n_days) ~ 9 %% n_days + 1, 
+          ExpDay %in% seq(9,max_days,n_days) ~ 10 %% n_days + 1, 
+          ExpDay %in% seq(10,max_days,n_days) ~ 11 %% n_days + 1, 
+        )) %>%
+      dplyr::select(Pi, bin, all_of(depVar), obs.day, Hour) %>%
+      tidyr::spread(bin, depVar, sep = "")
+  } else {
+    df.wide <- df %>%
+      mutate(
+        obs.day = case_when(
+          ExpDay %in% seq(0,max_days,n_days) ~ 1 %% n_days + 1, 
+          ExpDay %in% seq(1,max_days,n_days) ~ 2 %% n_days + 1, 
+          ExpDay %in% seq(2,max_days,n_days) ~ 3 %% n_days + 1, 
+          ExpDay %in% seq(3,max_days,n_days) ~ 4 %% n_days + 1, 
+          ExpDay %in% seq(4,max_days,n_days) ~ 5 %% n_days + 1, 
+          ExpDay %in% seq(5,max_days,n_days) ~ 6 %% n_days + 1, 
+          ExpDay %in% seq(6,max_days,n_days) ~ 7 %% n_days + 1, 
+          ExpDay %in% seq(7,max_days,n_days) ~ 8 %% n_days + 1, 
+          ExpDay %in% seq(8,max_days,n_days) ~ 9 %% n_days + 1, 
+          ExpDay %in% seq(9,max_days,n_days) ~ 10 %% n_days + 1, 
+          ExpDay %in% seq(10,max_days,n_days) ~ 11 %% n_days + 1, 
+        )) %>%
+      dplyr::select(Pi, bin, all_of(depVar), obs.day) %>%
+      tidyr::spread(bin, depVar, sep = "")
+  }
+  #df.clean <- df.wide[, colSums(is.na(df.wide)) == 0]
+  df.clean <- df.wide[rowSums(is.na(df.wide)) == 0,]
+  
+  df.wide <- df.clean ## Is this ok? 
+  ## Not sure how do handle the next trick...need to cbind an arbitrary bin0
+  
+  bins.list <- (names(df.clean))[3:length(names(df.clean))]
+  bins.list <- bins.list[bins.list != 'Hour']
+  bins.str <- paste(bins.list,collapse = ',')
+  
+  form.bins <- as.formula(paste("cbind(",bins.str,") ~ trait - 1",sep=""))
+  print(bins.list)
+  n_bins <- length(bins.list)
+  
+  prior.b <- list(R = list(V = diag(n_bins), nu = n_bins + .002),
+                  G = list(G1=list(V = diag(n_bins), nu = n_bins + .002, alpha.mu = rep(0,n_bins), alpha.V = 1000*diag(n_bins))))
+  
+  print(form.bins)
+  print(bins.list)
+  
+  for (b in bins.list) {
+    #col_name <- paste(b,"Scale",sep=".")
+    df.wide[,b] <- scale(df.wide[,b])
+    
+  }
+  print(df.wide)
+  print(form.bins)
+  behav.bin.id <- MCMCglmm(form.bins, 
+                           random = ~us(trait):Pi,
+                           rcov = ~idh(trait):units,
+                           family = c(rep("gaussian", n_bins)), 
+                           prior = prior.b, 
+                           pr = T, 
+                           nitt = 510000, thin = 200, burnin = 10000, 
+                           verbose = F,
+                           data = df.wide)
+  
+  # Model with only ID ----
+  
+  id.matrix.bin <- matrix(matrixStats::colMedians(posterior.cor(behav.bin.id$VCV[,1:(n_bins * n_bins)])),n_bins,n_bins, 
+                          dimnames = list(bins.list, 
+                                          bins.list))
+  
+  # now to extract the CI estimates
+  ci.bin <- dplyr::tibble(coda::HPDinterval(posterior.cor(behav.bin.id$VCV[,1:(n_bins*n_bins)])))
+  print(ci.bin)
+  # for corrplot need 3 matrices - estimates, lower CI, upper CI
+  lower.bin <- matrix(ci.bin[,1],length(bins.list),length(bins.list))
+  upper.bin <- matrix(ci.bin[,2],length(bins.list),length(bins.list))
+  
+  test <- melt(lower.bin) %>%
+    dplyr::mutate(p.value = ifelse(value < 0, 1, 0)) %>%
+    dplyr::select(Var1, Var2, p.value)
+  
+  test2 <- melt(upper.bin) %>%
+    dplyr::mutate(p.value = ifelse(value > 0, 1, 0)) %>%
+    dplyr::select(Var1, Var2, p.value)
+  
+  df.corrs <- melt(replace(id.matrix.bin, lower.tri(id.matrix.bin, T), NA), na.rm = T)
+  str(df.corrs)
+  
+  df.corrs$start.bin <- as.numeric(substr(df.corrs$Var1, 4, 5))
+  df.corrs$end.bin <- as.numeric(substr(df.corrs$Var2, 4, 5))
+  df.corrs$diff <- df.corrs$end.bin - df.corrs$start.bin
+  
+  #now pull out ci for each corr
+  lower.bin <- matrix(ci.bin[,1],n_bins,n_bins)
+  upper.bin <- matrix(ci.bin[,2],n_bins,n_bins)
+  
+  test.lower <- melt(replace(lower.bin, lower.tri(lower.bin, T), NA), na.rm = T)
+  test.upper <- melt(replace(upper.bin, lower.tri(upper.bin, T), NA), na.rm = T)
+  
+  ci.long <- left_join(test.lower, test.upper, by = c("Var1", "Var2")) %>%
+    rename(start.bin = Var1,
+           end.bin = Var2,
+           lower = value.x, 
+           upper = value.y) %>%
+    dplyr::arrange(start.bin, end.bin)
+  
+  ci.long$start.bin <- ci.long$start.bin -1
+  ci.long$end.bin <- ci.long$end.bin -1
+  among.corr <- left_join(df.corrs, ci.long, by = c("start.bin", "end.bin"))  
+  print(among.corr)
+  
+  p.mat <- diag(n_bins)
+  p.mat[cbind(test$Var1, test$Var2)] <- p.mat[cbind(test$Var2, test$Var1)] <- test$p.value
+  
+  p.mat2 <- diag(n_bins)
+  p.mat2[cbind(test2$Var1, test2$Var2)] <- p.mat2[cbind(test2$Var2, test2$Var1)] <- test2$p.value
+  
+  p.mat3 <- (p.mat & p.mat2)
+  
+  p.mat <- p.mat3 ## not sure why the logic works this way, but it does.
+  print(p.mat)
+  print(id.matrix.bin)
+  
+  plt.week.corr <- ggcorrplot(id.matrix.bin, 
+                              type = "lower", 
+                              p.mat = p.mat, 
+                              insig= "blank",
+                              colors = c("slateblue4","gray", "mediumorchid1"))
+  
+  plt.week.corr
+  
+  s=1
+  
+  pred.df <-data.frame(Pred=double(),upper=double(),lower=double(),bin=integer(),Pstep=factor())
+  
+  r.0 <- unlist(id.matrix.bin[1,])
+  ci_low.0 <- unlist(lower.bin[1,])
+  ci_up.0 <- unlist(upper.bin[1,])
+  
+  r.last <- unlist(id.matrix.bin[,n_bins])
+  ci_low.last <- unlist(lower.bin[,n_bins])
+  ci_up.last <- unlist(upper.bin[,n_bins])
+  
+  pred.df2 <- data.frame(bin=seq(n_bins),bin0_corr=r.0,bin0_lower=ci_low.0,bin0_upper=ci_up.0,
+                         binLast_corr=r.last,binLast_lower=ci_low.last,binLast_upper=ci_up.last)
+  
+  plt.predict.one <- ggplot(pred.df2,aes(x=bin*n_days)) + 
+    #geom_point(shape=1,size=4) + 
+    geom_line(aes(y=bin0_corr,colour='First Bin Correlation')) +
+    geom_line(aes(y=binLast_corr,colour='Last Bin Correlation')) +
+    #geom_errorbar(aes(ymin=bin0_lower,ymax=bin0_upper,colour='First Bin Correlation')) + 
+    #geom_errorbar(aes(ymin=binLast_lower,ymax=binLast_upper,colour='Last Bin Correlation')) + 
+    #ggtitle(depVar) +
+    #ylim(0,1) + 
+    ylab('Group-level Correlation') + 
+    xlab('Days since birth') + 
+    theme_classic() + 
+    scale_color_discrete(name="Step") +
+    guides(colour = guide_legend(reverse = F),) + 
+    theme(legend.position = "none",
+          rect=element_rect(fill="transparent"),
+          panel.background=element_rect(fill="transparent"),
+          axis.line = element_line(linewidth = 0.5, colour = "black"),
+          axis.ticks = element_line(colour = "black"),
+          axis.text = element_text(size = 12, colour = "black"),
+          axis.title = element_text(size = 14, face = "bold", colour = "black"),
+          plot.title = element_text(hjust = 0.5, size = 14)) 
+  
+  plt.predict.one
+  
+  
+  for (s in 1:(n_bins -2)){
+    pred.list <- list()
+    lower.list <- list()
+    upper.list <- list()
+    for(i in 1:(n_bins-s)){
+      r <- id.matrix.bin[i,i+s]
+      ci_low <- lower.bin[i,i+s]
+      ci_up <- upper.bin[i,i+s]
+      pred.list[i] <- r
+      lower.list[i] <- ci_low
+      upper.list[i] <- ci_up
+    }
+    pred.list <- unlist(pred.list)
+    lower.list <- unlist(lower.list)
+    upper.list <- unlist(upper.list)
+    pred.list
+    upper.list
+    lower.list
+    
+    pred.sub <- data.frame(pred.list,lower.list,upper.list,seq(1,length(upper.list)),rep(s,length(upper.list)))
+    names(pred.sub) <- c("Pred","upper","lower","bin","Pstep")
+    pred.df <-rbind(pred.df,pred.sub)
+    
+  }
+  pred.df
+  
+  colourslist <- scales::hue_pal()(length(unique(pred.df$Pstep)))
+  # Name your list of colors
+  names(colourslist) <- unique(pred.df$Pstep)
+  
+  plt.predict.steps <- ggplot(pred.df,aes(x=bin*n_days,y=Pred,group=Pstep,color=as.factor(Pstep))) + 
+    #geom_point(shape=1,size=4) + 
+    geom_line() +
+    #geom_errorbar(aes(ymin=lower,ymax=upper)) + 
+    ggtitle(depVar) +
+    ylim(0,1) + 
+    ylab('Predictability') + 
+    xlab('Days since birth') + 
+    theme_classic() + 
+    scale_color_discrete(name="Step") +
+    guides(colour = guide_legend(reverse = F),) + 
+    theme(legend.position = "right",
+          rect=element_rect(fill="transparent"),
+          panel.background=element_rect(fill="transparent"),
+          axis.line = element_line(linewidth = 0.5, colour = "black"),
+          axis.ticks = element_line(colour = "black"),
+          axis.text = element_text(size = 12, colour = "black"),
+          axis.title = element_text(size = 14, face = "bold", colour = "black"),
+          plot.title = element_text(hjust = 0.5, size = 14)) 
+  plt.predict.steps
+  pred.df
+  
+  pred.onestep <- pred.df[pred.df$Pstep == 1,]
+  plt.onestep <- ggplot(pred.onestep,aes(x=bin*n_days,y=Pred)) + 
+    #geom_point(shape=1,size=4) + 
+    geom_line() +
+    #geom_errorbar(aes(ymin=lower,ymax=upper)) + 
+    ggtitle(s) +
+    #ylim(0,1) + 
+    ylab('Predictability') + 
+    xlab('Days since birth') + 
+    theme_classic() + 
+    #scale_color_discrete(name="Step") +
+    #guides(colour = guide_legend(reverse = F),) + 
+    theme(legend.position = "none",
+          rect=element_rect(fill="transparent"),
+          panel.background=element_rect(fill="transparent"),
+          axis.line = element_line(linewidth = 0.5, colour = "black"),
+          axis.ticks = element_line(colour = "black"),
+          axis.text = element_text(size = 12, colour = "black"),
+          axis.title = element_text(size = 14, face = "bold", colour = "black"),
+          plot.title = element_text(hjust = 0.5, size = 14)) 
+  plt.onestep
+  #return(list(plt.week.corr, plt.predict.one,behav.bin.id,n_bins,id.matrix.bin,ci.bin))
+  
+  if (hourly) { 
+    among.corr <- among.corr[among.corr$Var1 !='Hour',]
+  }
+  return(list(plt.week.corr, plt.predict.one,behav.bin.id,n_bins,among.corr,df.wide))
+}
+
+### Plotting function to handle the massive correlation plot
+func.megafig <- function(plots.predict,hourly=T) {
+  
+  
+  behav.bin.id <- plots.predict[[3]]
+  n_bins <- plots.predict[[4]]
+  among.corr <- plots.predict[[5]]
+  
+  #id.matrix.bin <- plots.predict.dist[[5]]
+  #ci.bin <- plots.predict.dist[[6]]
+  
+  ## Need to have weekly blups?
+  # n_bins:len(Sol)
+  if (hourly) {
+    shift <- 1
+  } else {
+    shift <- 1
+  }
+  binwise.blups <- dplyr::data_frame(Trait = colnames(behav.bin.id$Sol)[(n_bins + shift):ncol(behav.bin.id$Sol)],
+                              Value = unname(matrixStats::colMedians(behav.bin.id$Sol)[(n_bins + shift):ncol(behav.bin.id$Sol)])) |>
+    tidyr::separate(Trait, into = c("bin", "pi", "comp")) |>
+    dplyr::mutate(picomp = paste(pi, comp, sep = "_"),
+           bin = substr(bin, nchar(bin)-3, nchar(bin))) |>
+    dplyr::select(-pi, -comp) |>
+    tidyr::spread(bin, Value) 
+  
+  ranking <- ranking.df$ranking
+  
+  
+  bin_names <- colnames(binwise.blups)[2:length(colnames(binwise.blups))]
+  bin_names.full <- bin_names
+  bin_names.full[[11]] <- "bin10"
+  n_elements <- (n_bins * (n_bins - 1)) / 2
+  
+  plots.list <- vector("list",n_elements)
+  n_count <- 0
+  
+  matrix.fig <- plots.predict[[2]]
+  print(binwise.blups)
+  xy_min <- min(binwise.blups[,seq(2,11)])
+  
+  xy_max <- max(binwise.blups[,seq(2,11)])
+  
+  for (i in seq(n_bins)) {
+    for (j in seq(n_bins)) {
+      if(i >= j) next
+      x_min <- min(binwise.blups[,j+1])
+      x_max <- max(binwise.blups[,j+1])
+      y_min <- min(binwise.blups[,i+1])
+      y_max <- max(binwise.blups[,i+1])
+      xy_min <- min(c(x_min,y_min))
+      xy_max <- max(c(x_max,y_max))
+      n_count <- n_count + 1
+      slope <- among.corr[among.corr$Var1 == bin_names.full[i] & among.corr$Var2 == bin_names.full[j],]$value
+      
+      single.plot <- ggplot(binwise.blups, aes(x = .data[[bin_names[j]]], y = .data[[bin_names[[i]]]])) +
+        geom_abline(intercept = 0, slope = slope) +
+        geom_point(aes(color = ranking), size = 2) +
+        #geom_point(aes(x=bin8,y=bin1)) + 
+        scale_color_viridis_c(option = "plasma") +
+        #scale_x_continuous(limits = c(-2, 2)) + #, breaks = c(-0.75, 0, 0.75, 1.5, 2.25)) +
+        #scale_y_continuous(limits = c(-2, 2)) + #, breaks = c(-0.75, 0, 0.75, 1.5, 2.25)) +
+        scale_x_continuous(limits = c(xy_min, xy_max)) + 
+        scale_y_continuous(limits = c(xy_min, xy_max)) +
+        theme_classic() +
+        theme(legend.position = "none",
+              axis.title = element_blank(),
+              axis.text = element_blank(),
+              plot.margin = margin(0,0,0,0))
+      plots.list[[n_count]] <- single.plot
+      print(c(n_count,i,j))
+      matrix.fig <- matrix.fig + single.plot
+    }
+  }
+  
+  ## woof. There might be a better way to do this...
+  layout <- "
+  123456789a
+  #AbBcCdDeE
+  ##fFgGhHiI
+  ###jJkKlLm
+  ####MnNoOp
+  #####PqQrR
+  0000##sStT
+  0000###uUv
+  0000####Vw
+  0000#####W
+  "
+  
+  matrix.fig <- matrix.fig + patchwork::plot_layout(design = layout)
+  
+  matrix.fig
+  return(matrix.fig)
+}
+
+### Make correlation matrix for a list of behaviors
+func.corr.stat <- function(beh.list,df=variance.clean) {
+  beh.str <- paste(beh.list,collapse = ',')
+  n_beh <- length(beh.list)
+  #print(n_beh)
+  prior.covX <- list(R = list(V = diag(n_beh), nu = n_beh + 0.002),
+                     G = list(G1=list(V = diag(n_beh), nu = n_beh + 0.002, alpha.mu = rep(0,n_beh), alpha.V = 1000*diag(n_beh))))
+  
+  behav.size.corX <- MCMCglmm::MCMCglmm(as.formula(paste("cbind(",beh.str,") ~ trait - 1",sep="")), 
+                              random = ~us(trait):Pi, 
+                              rcov = ~us(trait):units,
+                              family = c(rep("gaussian", n_beh)), 
+                              prior = prior.covX, 
+                              nitt = 510000, thin = 200, burnin = 10000, 
+                              verbose = F,
+                              data = df)
+  ## Correlation
+  # Model for entire observation period  ----
+  behav.matrix.sizeX <- matrix(MCMCglmm::posterior.mode(MCMCglmm::posterior.cor(behav.size.corX$VCV[,1:n_beh^2])),n_beh,n_beh, 
+                               dimnames = list(beh.list, 
+                                               beh.list))
+  
+  ## Confidence interval
+  # now to extract the CI estimates
+  ci.sizeX <- data.frame(coda::HPDinterval(MCMCglmm::posterior.cor(behav.size.corX$VCV[,1:n_beh^2])))
+  
+  sig.0 <- TRUE
+  if (ci.sizeX['var2','lower'] * ci.sizeX['var2','upper'] < 0) {
+    sig.0 <- FALSE
+  }
+  
+  ## Correlation
+  r.est <- behav.matrix.sizeX[1,2]
+  #print(behav.matrix.sizeX[1,2])
+  #print(sig.0)
+  ## Check that eff sample > 2500
+  #print(min(summary(behav.size.corX)$solutions[,'eff.samp']))
+  f.samp <- min(summary(behav.size.corX)$solutions[,'eff.samp'])
+  
+  if (f.samp < 2000) {
+    print("Warning, f.samp < 2000")
+    print(f.samp)
+  }
+  ## Check that autocorr is low 
+  #print(max(abs(autocorr(behav.size.corX$VCV)[2,,])))
+  max.autocorr <- max(abs(coda::autocorr(behav.size.corX$VCV)[2,,]))
+  
+  if (max.autocorr > 0.1) { 
+    print("Warning, max.autocorr > 0.1")
+    print(max.autocorr)
+  }
+  return(list(behav.size.corX,r.est,f.samp,max.autocorr,sig.0))
+}
+
+```
+
+## Setting up Colors
+For all plots, we will be coloring the tanks by their predicted inter individual distance on day 1 (i.e., the intercept in a regression). Although we use hourly data throughout, for speed,  simplity, and to avoid rewriting old code, we use the daily averages for getting the ranks. 
+
+```{r getRanks}
+
+## Hourly data is used throughout, but we'll need use this for sorting below. 
+if (T) {
+  plots.dist <- readRDS('./rdsFiles/model.distDaily.rds')
+} else {
+  plots.dist <- func.ndays.intercepts.het('dist_meanScale',indv.long54,n_days,prior.cov=prior.best,hourly = F)
+  saveRDS(plots.dist,'./rdsFiles/model.distDaily.rds')
+}
+
+## Get the rankings used for plots
+ranking.df <- plots.dist[[6]][c("picomp","ranking")] |> 
+  dplyr::arrange(picomp) |>
+  unique()
+
+```
+## Model Comparison
+To assess changes group-level repeatability, we basically require a model with random slope and intercept, and that has hourly data and heterogenous variance so that the residual is able to vary over time. Thus for all our repeatabiilty measures, we are essentially locked into this model, But we would like to know if this is actually the best model for the data. 
+
+Lets do this first for velocity: 
+Annoying, you need to vary the prior for each one
+
+```{r VelocityComparison}
+
+## Define priors used in exploration
+prior.simple <- list(R = list(V = 1, nu = 0.002))
+
+prior.id <- list(R = list(V = 1, nu = 0.002),
+                  G = list(G1=list(V = 1, nu = 0.002, alpha.mu = 0, alpha.V = 25^2)))
+
+if (F) {
+model.simpleDay <- MCMCglmm::MCMCglmm(fixed = vel_meanScale ~ ExpDay, 
+                        data = indv.hourly54, 
+                        family = "gaussian",
+                        pr = T,
+                        prior = prior.simple, 
+                        nitt=310000, burnin = 10000, thin = 200, 
+                        verbose = F) 
+
+## This is a bit farcical, but ncie for completeness
+model.simpleHour <- MCMCglmm::MCMCglmm(fixed = vel_meanScale ~ Hour, 
+                        data = indv.hourly54, 
+                        family = "gaussian",
+                        pr = T,
+                        prior = prior.simple, 
+                        nitt=310000, burnin = 10000, thin = 200, 
+                        verbose = F) 
+
+model.simpleBoth <- MCMCglmm::MCMCglmm(fixed = vel_meanScale ~ ExpDay + Hour, 
+                        data = indv.hourly54,
+                        family = "gaussian",
+                        pr = T,
+                        prior = prior.simple, 
+                        nitt=310000, burnin = 10000, thin = 200, 
+                        verbose = F)
+saveRDS(model.simpleDay,'./rdsFiles/model.simpleDay.rds')
+saveRDS(model.simpleHour,'./rdsFiles/model.simpleHour.rds')
+saveRDS(model.simpleBoth,'./rdsFiles/model.simpleBoth.rds')
+} else {
+  model.simpleDay <- readRDS('./rdsFiles/model.simpleDay.rds')
+  model.simpleHour <- readRDS('./rdsFiles/model.simpleHour.rds')
+  model.simpleBoth <- readRDS('./rdsFiles/model.simpleBoth.rds')
+  
+}
+
+print(paste("Vel ~ Day:",model.simpleDay$DIC))
+print(paste("Vel ~ Hour:",model.simpleHour$DIC))
+print(paste("Vel ~ Day + Hour:",model.simpleBoth$DIC))
+```
+
+So having both hour and day is best, moving on to random effects
+
+```{r VelocityComparison}
+
+if (F) {
+model.randomIntercept <- MCMCglmm::MCMCglmm(fixed = vel_meanScale ~ ExpDay + Hour, 
+                        random = ~Pi, 
+                        #rcov = ~idh(ExpDay_factor):units, ## use this line for het. residual variance
+                        data = indv.hourly54, 
+                        family = "gaussian",
+                        pr = T,
+                        prior = prior.id, 
+                        nitt=310000, burnin = 10000, thin = 200, 
+                        verbose = F) 
+
+model.randomSlope <- MCMCglmm::MCMCglmm(fixed = vel_meanScale ~ ExpDay + Hour, 
+                        random = ~us(1 + ExpDay):Pi, 
+                        #rcov = ~idh(ExpDay_factor):units, ## use this line for het. residual variance
+                        data = indv.hourly54, 
+                        family = "gaussian",
+                        pr = T,
+                        prior = prior.id.slope, 
+                        nitt=310000, burnin = 10000, thin = 200, 
+                        verbose = F) 
+
+model.full <- MCMCglmm::MCMCglmm(fixed = vel_meanScale ~ ExpDay + Hour, 
+                        random = ~us(1 + ExpDay):Pi, 
+                        rcov = ~idh(ExpDay_factor):units, ## use this line for het. residual variance
+                        data = indv.hourly54, 
+                        family = "gaussian",
+                        pr = T,
+                        prior = prior.cov, ## Replace this with prior.id.slope for homo residual variance
+                        nitt=310000, burnin = 10000, thin = 200, 
+                        verbose = F) 
+
+  saveRDS(model.randomIntercept,'./rdsFiles/model.randomIntercept.rds')
+  saveRDS(model.randomSlope,'./rdsFiles/model.randomSlope.rds')
+  saveRDS(model.full,'./rdsFiles/model.full.rds')
+
+} else {
+  model.randomIntercept <- readRDS('./rdsFiles/model.randomIntercept.rds')
+  model.randomSlope <- readRDS('./rdsFiles/model.randomSlope.rds')
+  model.full <- readRDS('./rdsFiles/model.full.rds')
+  }
+
+print(paste("Vel ~ Day + Hour + 1|Group:",model.randomIntercept$DIC))
+print(paste("Vel ~ Day + Hour + Day|Group:",model.randomSlope$DIC))
+print(paste("Vel ~ Day + Hour + Day|Group (het. residual):",model.full$DIC))
+
+```
+
+If you're curious, here's the (unscaled) effects on velocity for all the models above. 
+```{r}
+
+## I have a function to unscale models, but it assumes two fixed effects, 
+## So we do it by hand for the simple models
+depScale <- sd(indv.hourly54[,'vel_mean_'],na.rm=T)
+coefsDay <- summary(model.simpleDay)[["solutions"]][2,1:3] * depScale
+p_valsDay <- summary(model.simpleDay)[["solutions"]][2,5]
+  
+coefsHour <- summary(model.simpleHour)[["solutions"]][2,1:3] * depScale
+p_valsHour <- summary(model.simpleHour)[["solutions"]][2,5]
+  
+print('Vel ~ Day:')
+print(coefsDay)
+print(p_valsDay)
+
+print('Vel ~ Hour:')
+print(coefsHour)
+print(p_valsHour)
+
+
+print('Vel ~ Day + Hour:')
+func.unscaleModel(model.simpleBoth,'vel_mean_')
+
+print('Random Intercept:')
+func.unscaleModel(model.randomIntercept,'vel_mean_')
+print('Random Slope:')
+func.unscaleModel(model.randomSlope,'vel_mean_')
+print('Random Slope + Het. residual variance:')
+func.unscaleModel(model.full,'vel_mean_')
+```
+## Run Models
+We run all of the models here, the output will be below
+
+```{r runModels}
+
+if (T) {
+  plots.vel.hourly <- readRDS('./rdsFiles/model.vel.rds')
+  plots.wall_dist.hourly <- readRDS('./rdsFiles/model.wall_dist.rds')
+  plots.velC.hourly <- readRDS('./rdsFiles/model.velC.rds')
+  plots.dist.hourly <- readRDS('./rdsFiles/model.dist.rds')
+  plots.vel.hourlySize <- readRDS('./rdsFiles/model.vel_size.rds')
+  plots.wall_distC.hourly <- readRDS('./rdsFiles/model.wall_distC.rds')
+  plots.angleC.hourly <- readRDS('./rdsFiles/model.angleC.rds')
+  
+} else {
+  plots.vel.hourly <- func.ndays.intercepts.het('vel_meanScale',indv.hourly54,n_days,prior.cov=prior.best,verbose=T,hourly=T)
+  saveRDS(plots.vel.hourly,'./rdsFiles/model.vel.rds')
+  
+  plots.wall_dist.hourly <- func.ndays.intercepts.het('pDist_meanScale',indv.hourly54,n_days,prior.cov=prior.best,verbose=T)
+  saveRDS(plots.wall_dist.hourly,'./rdsFiles/model.wall_dist.rds')
+  
+  plots.velC.hourly <- func.ndays.intercepts.het('velC_meanScale',indv.hourly54,n_days,prior.cov=prior.best,verbose=T,hourly=T)
+  saveRDS(plots.velC.hourly,'./rdsFiles/model.velC.rds')
+  
+  plots.dist.hourly <- func.ndays.intercepts.het('dist_meanScale',indv.hourly54,n_days,prior.cov=prior.best,verbose=T,hourly=T)
+  saveRDS(plots.dist.hourly,'./rdsFiles/model.dist.rds')
+  
+  plots.vel.hourlySize <- func.ndays.intercepts.het('vel_sizeScale',indv.hourly54,n_days,prior.cov=prior.best,verbose=T,hourly=T)
+  saveRDS(plots.vel.hourlySize,'./rdsFiles/model.vel_size.rds')
+  
+  plots.wall_distC.hourly <- func.ndays.intercepts.het('pDistC_meanScale',indv.hourly54,n_days,prior.cov=prior.best,verbose=T)
+  saveRDS(plots.wall_distC.hourly,'./rdsFiles/model.wall_distC.rds')
+  
+  plots.angleC.hourly <- func.ndays.intercepts.het('angleC_meanScale',indv.hourly54,n_days,prior.cov=prior.best,verbose=T)
+  saveRDS(plots.angleC.hourly,'./rdsFiles/model.angleC.rds')
+}
+
+```
+
+## Model outputs: 
+
+Because we are modeling heterogeneous variance, we have a trace for every day, but for simplicity, we only plot the traces and distributions for the intercept and ExpDay variances. You can find the plots for everything for all models at the very end of the PDF 
+
+First we have model outputs for velocity
+```{r velocityHourly echo=F}
+
+summary(plots.vel.hourly[[7]])
+plot(plots.vel.hourly[[7]]$VCV[,c(1,4)])
+
+func.unscaleModel(plots.vel.hourly[[7]],'vel_mean_')
+
+
+```
+
+
+
+Distance from the center
+```{r wallDistHourly}
+summary(plots.wall_dist.hourly[[7]])
+func.unscaleModel(plots.wall_dist.hourly[[7]],'pDist_mean_')
+plot(plots.wall_dist.hourly[[7]]$VCV[,c(1,4)])
+```
+
+Mean pairwise correlation in individual velocity
+```{r velCHourly}
+
+summary(plots.velC.hourly[[7]])
+func.unscaleModel(plots.velC.hourly[[7]],'velC_mean_')
+
+plot(plots.velC.hourly[[7]]$VCV[,c(1,4)])
+
+```
+
+Inter-individual distance
+```{r distHourly}
+
+summary(plots.dist.hourly[[7]])
+func.unscaleModel(plots.dist.hourly[[7]],'dist_mean_')
+
+plot(plots.dist.hourly[[7]]$VCV[,c(1,4)])
+
+```
+
+Velocity, scaled by mean size of fish in that tank (smoothed over time using a linear best fit)
+```{r velHourlySize}
+
+summary(plots.vel.hourlySize[[7]])
+func.unscaleModel(plots.vel.hourlySize[[7]],'vel_meanSize_')
+
+plot(plots.vel.hourlySize[[7]]$VCV[,c(1,4)])
+
+```
+
+These two are supplemental in the paper, correlation in distance from center, and the correlation in angle. 
+```{r Supplementals}
+
+## These two are supplemental
+summary(plots.wall_distC.hourly[[7]])
+func.unscaleModel(plots.wall_distC.hourly[[7]],'pDistC_mean_')
+
+plot(plots.wall_distC.hourly[[7]]$VCV[,c(1,4)])
+
+summary(plots.angleC.hourly[[7]])
+func.unscaleModel(plots.angleC.hourly[[7]],'angleC_mean_')
+
+plot(plots.angleC.hourly[[7]]$VCV[,c(1,4)])
+
+```
+
+# Generate plots 
+With those models run, most of the actual analysis is complete, and a lot of what follows will be plotting. As a reminder, all plotting functions can be found above in the "build functions" section 
+
+## Get sliding plots
+Generate sliding averages, we could use blups here, but this is faster and simpler to explain. 
+```{r sliding}
+
+sliding.dist <- func.slidingMean('dist_mean',indv.long54,5,use_scale=T)
+sliding.velC <- func.slidingMean('velC_mean',indv.long54,5)
+#sliding.velCScale <- func.slidingMean('velC_meanScale',indv.long54,5)
+
+sliding.vel <- func.slidingMean('vel_mean',indv.long54,5,use_scale=T)
+sliding.velSize <- func.slidingMean('vel_meanSize',indv.long54,5,use_scale=T)
+sliding.Size <- func.slidingMean('size_Fit',indv.long54,5,use_scale=T)
+sliding.wall_dist <- func.slidingMean('pDist_mean',indv.long54,5,use_scale=T)
+sliding.wall_distC <- func.slidingMean('pDistC_mean',indv.long54,5)
+sliding.angleC <- func.slidingMean('angleC_mean',indv.long54,5)
+
+```
+
+## Build repeatability plots
+These plot both repeatability and the partitioned variance. The two variance components (within- and among-group variance) are plotted with a different scale (0:2). Plotting with two axes is a bit fiddly, so I just add the second axis in manually on the right side for the final figures using affinity designer. 
+```{r repeatabilityPlots}
+rpt.plot.dist <- func.rpt.plot(plots.dist.hourly[[5]])
+rpt.plot.dist2 <- func.rpt.plot(plots.dist.hourly[[5]],components=T)
+rpt.plot.velC <- func.rpt.plot(plots.velC.hourly[[5]])
+rpt.plot.velC2 <- func.rpt.plot(plots.velC.hourly[[5]],components=T)
+
+rpt.plot.vel <- func.rpt.plot(plots.vel.hourly[[5]],components=T)
+rpt.plot.velSize <- func.rpt.plot(plots.vel.hourlySize[[5]],components=T)
+
+#rpt.plot.vel_std <- func.rpt.plot(plots.vel_std[[5]])
+rpt.plot.wall_dist <- func.rpt.plot(plots.wall_dist.hourly[[5]],components=T)
+rpt.plot.wall_distC <- func.rpt.plot(plots.wall_distC.hourly[[5]],components=T)
+rpt.plot.angleC <- func.rpt.plot(plots.angleC.hourly[[5]],components=T)
+#rpt.plot.angle_std <- func.rpt.plot(plots.angle_std[[5]])
+
+plots.dist.hourly[[5]]$date_category <- as.factor(plots.dist.hourly[[5]]$dates %/% 19 + 1)
+plots.vel.hourly[[5]]$date_category <- as.factor(plots.vel.hourly[[5]]$dates %/% 19 + 1)
+plots.velC.hourly[[5]]$date_category <- as.factor(plots.velC.hourly[[5]]$dates %/% 19 + 1)
+plots.wall_dist.hourly[[5]]$date_category <- as.factor(plots.wall_dist.hourly[[5]]$dates %/% 19 + 1)
+plots.wall_distC.hourly[[5]]$date_category <- as.factor(plots.wall_distC.hourly[[5]]$dates %/% 19 + 1)
+plots.angleC.hourly[[5]]$date_category <- as.factor(plots.angleC.hourly[[5]]$dates %/% 19 + 1)
+
+```
+
+## Quick tangent: rpt ~ time
+I wanted to know whether repeatability changes over time. We could do this as a simple regression, but these plots of visibly not linear, so instead I use a categorical regression, dividing the experiment into three categories. 
+
+```{r rptTime}
+
+### Quick check for time effect on repeatability 
+model.rptTime.dist <- lm(rpt ~ date_category,data=plots.dist.hourly[[5]])
+model.rptTime.vel <- lm(rpt ~ date_category,data=plots.vel.hourly[[5]])
+model.rptTime.velC <- lm(rpt ~ date_category,data=plots.velC.hourly[[5]])
+model.rptTime.wall_dist <- lm(rpt ~ date_category,data=plots.wall_dist.hourly[[5]])
+model.rptTime.wall_distC <- lm(rpt ~ date_category,data=plots.wall_distC.hourly[[5]])
+model.rptTime.angleC <- lm(rpt ~ date_category,data=plots.angleC.hourly[[5]])
+
+summary(model.rptTime.dist)
+summary(model.rptTime.vel)
+summary(model.rptTime.velC)
+summary(model.rptTime.wall_dist)
+summary(model.rptTime.wall_distC)
+summary(model.rptTime.angleC)
+
+```
+
+## Premutation analysis
+
+This bit is unbearably slow, but luckily we can just load the model for you. We are simply shuffling the data by randomizing the days. This gives us a baseline for the null distribution of repeatability (given the amount of data, the distribution is very close to 0. 
+
+Again, you can find the relevent function (func.shuffle.df) in the functions section above.  
+
+```{r Permutation}
+
+## This takes ages, and we have such a large hourly dataset that the null rpt is 0
+if (F) {
+  rpt.coh <- parallel::mclapply(1:50,func.shuffled.rpt.i,depVar='dist_meanScale',prior.cov=prior.best,mc.cores=5L)
+  rpt.mat.coh <- do.call("cbind",rpt.coh)
+  rpt.quants.coh <- matrixStats::rowQuantiles(rpt.mat.coh,probs=c(.025,.975))
+  
+  rpt.vel <- parallel::mclapply(1:50,func.shuffled.rpt.i,depVar='vel_meanScale',prior.cov=prior.best,mc.cores=5L)
+  rpt.mat.vel <- do.call("cbind",rpt.vel)
+  rpt.quants.vel <- matrixStats::rowQuantiles(rpt.mat.vel,probs=c(.025,.975))
+  
+  rpt.velC <- parallel::mclapply(1:50,func.shuffled.rpt.i,depVar='velC_meanScale',prior.cov=prior.best,mc.cores=5L)
+  rpt.mat.velC <- do.call("cbind",rpt.velC)
+  rpt.quants.velC <- matrixStats::rowQuantiles(rpt.mat.velC,probs=c(.025,.975))
+  
+  rpt.pdist <- parallel::mclapply(1:50,func.shuffled.rpt.i,depVar='pDist_meanScale',prior.cov=prior.best,mc.cores=5L)
+  rpt.mat.pdist <- do.call("cbind",rpt.pdist)
+  rpt.quants.pdist <- matrixStats::rowQuantiles(rpt.mat.pdist,probs=c(.025,.975))
+  
+  rpt.pdistC <- parallel::mclapply(1:50,func.shuffled.rpt.i,depVar='pDistC_meanScale',prior.cov=prior.best,mc.cores=5L)
+  rpt.mat.pdistC <- do.call("cbind",rpt.pdistC)
+  rpt.quants.pdistC <- matrixStats::rowQuantiles(rpt.mat.pdistC,probs=c(.025,.975))
+  
+  rpt.angleC <- parallel::mclapply(1:50,func.shuffled.rpt.i,depVar='angleC_meanScale',prior.cov=prior.best,mc.cores=5L)
+  rpt.mat.angleC <- do.call("cbind",rpt.angleC)
+  rpt.quants.angleC <- matrixStats::rowQuantiles(rpt.mat.angleC,probs=c(.025,.975))
+
+  rpt.velSize <- parallel::mclapply(1:50,func.shuffled.rpt.i,depVar='vel_sizeScale',prior.cov=prior.best,mc.cores=5L)
+  rpt.mat.velSize <- do.call("cbind",rpt.velSize)
+  rpt.quants.velSize <- matrixStats::rowQuantiles(rpt.mat.velSize,probs=c(.025,.975))
+  
+  rib_alpha = 1
+  rib_color = 'black'
+  rpt.plot.dist.ribbon <- geom_ribbon(aes(ymin = rpt.quants.coh[,1], ymax = rpt.quants.coh[,2]), fill = rib_color, alpha = rib_alpha)
+  rpt.plot.velC.ribbon <- geom_ribbon(aes(ymin = rpt.quants.velC[,1], ymax = rpt.quants.velC[,2]), fill = rib_color, alpha = rib_alpha)
+  rpt.plot.dist2.ribbon <- geom_ribbon(aes(ymin = rpt.quants.coh[,1], ymax = rpt.quants.coh[,2]), fill = rib_color, alpha = rib_alpha)
+  rpt.plot.velC2.ribbon <- geom_ribbon(aes(ymin = rpt.quants.velC[,1], ymax = rpt.quants.velC[,2]), fill = rib_color, alpha = rib_alpha)
+  rpt.plot.vel.ribbon <- geom_ribbon(aes(ymin = rpt.quants.vel[,1], ymax = rpt.quants.vel[,2]), fill = rib_color, alpha = rib_alpha)
+  rpt.plot.wall_dist.ribbon <- geom_ribbon(aes(ymin = rpt.quants.pdist[,1], ymax = rpt.quants.pdist[,2]), fill = rib_color, alpha = 0.5)
+  rpt.plot.wall_distC.ribbon <- geom_ribbon(aes(ymin = rpt.quants.pdistC[,1], ymax = rpt.quants.pdistC[,2]), fill = rib_color, alpha = 0.5)
+  rpt.plot.angleC.ribbon <- geom_ribbon(aes(ymin = rpt.quants.angleC[,1], ymax = rpt.quants.angleC[,2]), fill = rib_color, alpha = rib_alpha)
+  rpt.plot.velSize.ribbon <- geom_ribbon(aes(ymin = rpt.quants.velSize[,1], ymax = rpt.quants.velSize[,2]), fill = rib_color, alpha = rib_alpha)  
+  
+  ### Build full rpt plots
+  rpt.plot.dist_ <- rpt.plot.dist + rpt.plot.dist.ribbon
+  rpt.plot.velC_ <- rpt.plot.velC + rpt.plot.velC.ribbon
+  rpt.plot.dist2_ <- rpt.plot.dist2 + rpt.plot.dist2.ribbon
+  rpt.plot.velC2_ <- rpt.plot.velC2 + rpt.plot.velC2.ribbon
+  rpt.plot.vel_ <- rpt.plot.vel + rpt.plot.vel.ribbon
+  rpt.plot.wall_dist_ <- rpt.plot.wall_dist + rpt.plot.wall_dist.ribbon
+  rpt.plot.wall_distC_ <- rpt.plot.wall_distC + rpt.plot.wall_distC.ribbon
+  rpt.plot.angleC_ <- rpt.plot.angleC + rpt.plot.angleC.ribbon
+  rpt.plot.velSize_ <- rpt.plot.velSize + rpt.plot.velSize.ribbon
+  
+  ## This was going to be so slick, but the ribbon just points to the quants
+  saveRDS(rpt.plot.dist.ribbon,'./rdsFiles/rpt.plot.dist.ribbon.rds')
+  saveRDS(rpt.plot.velC.ribbon,'./rdsFiles/rpt.plot.velC.ribbon.rds')
+  saveRDS(rpt.plot.dist2.ribbon,'./rdsFiles/rpt.plot.dist2.ribbon.rds')
+  saveRDS(rpt.plot.velC2.ribbon,'./rdsFiles/rpt.plot.velC2.ribbon.rds')
+  saveRDS(rpt.plot.vel.ribbon,'./rdsFiles/rpt.plot.vel.ribbon.rds')
+  saveRDS(rpt.plot.wall_dist.ribbon,'./rdsFiles/rpt.plot.wall_dist.ribbon.rds')
+  saveRDS(rpt.plot.wall_distC.ribbon,'./rdsFiles/rpt.plot.wall_distC.ribbon.rds')
+  saveRDS(rpt.plot.angleC.ribbon,'./rdsFiles/rpt.plot.angleC.ribbon.rds')
+  saveRDS(rpt.plot.velSize.ribbon,'./rdsFiles/rpt.plot.velSize.ribbon.rds')
+
+  
+  ## So I need these ones also
+  saveRDS(rpt.quants.coh,'./rdsFiles/rpt.quants.coh.rds')
+  saveRDS(rpt.quants.velC,'./rdsFiles/rpt.quants.velC.rds')
+  saveRDS(rpt.quants.vel,'./rdsFiles/rpt.quants.vel.rds')
+  saveRDS(rpt.quants.pdist,'./rdsFiles/rpt.quants.wall_dist.rds')
+  saveRDS(rpt.quants.pdistC,'./rdsFiles/rpt.quants.wall_distC.rds')
+  saveRDS(rpt.quants.angleC,'./rdsFiles/rpt.quants.angleC.rds')
+  saveRDS(rpt.quants.velSize,'./rdsFiles/rpt.quants.velSize.rds')
+  
+} else if (T) {
+  rpt.quants.coh <- readRDS('./rdsFiles/rpt.quants.coh.rds')
+  rpt.quants.vel <- readRDS('./rdsFiles/rpt.quants.vel.rds')
+  rpt.quants.velC <- readRDS('./rdsFiles/rpt.quants.velC.rds')
+  rpt.quants.pdist <- readRDS('./rdsFiles/rpt.quants.wall_dist.rds')
+  rpt.quants.pdistC <- readRDS('./rdsFiles/rpt.quants.wall_distC.rds')
+  rpt.quants.angleC <- readRDS('./rdsFiles/rpt.quants.angleC.rds')
+  rpt.quants.velSize <- readRDS('./rdsFiles/rpt.quants.velSize.rds')
+  
+  rpt.plot.dist.ribbon <- readRDS('./rdsFiles/rpt.plot.dist.ribbon.rds')
+  rpt.plot.vel.ribbon <- readRDS('./rdsFiles/rpt.plot.vel.ribbon.rds')
+  
+  rpt.plot.velC.ribbon <- readRDS('./rdsFiles/rpt.plot.velC.ribbon.rds')
+  rpt.plot.dist2.ribbon <- readRDS('./rdsFiles/rpt.plot.dist2.ribbon.rds')
+  rpt.plot.velC2.ribbon <- readRDS('./rdsFiles/rpt.plot.velC2.ribbon.rds')
+  rpt.plot.wall_dist.ribbon <- readRDS('./rdsFiles/rpt.plot.wall_dist.ribbon.rds')
+  rpt.plot.wall_distC.ribbon <- readRDS('./rdsFiles/rpt.plot.wall_distC.ribbon.rds')
+  rpt.plot.angleC.ribbon <- readRDS('./rdsFiles/rpt.plot.angleC.ribbon.rds')
+  rpt.plot.velSize.ribbon <- readRDS('./rdsFiles/rpt.plot.velSize.ribbon.rds')
+  
+  ### Build full rpt plots
+  rpt.plot.dist_ <- rpt.plot.dist + rpt.plot.dist.ribbon
+  rpt.plot.velC_ <- rpt.plot.velC + rpt.plot.velC.ribbon
+  rpt.plot.dist2_ <- rpt.plot.dist2 + rpt.plot.dist2.ribbon
+  rpt.plot.velC2_ <- rpt.plot.velC2 + rpt.plot.velC2.ribbon
+  rpt.plot.vel_ <- rpt.plot.vel + rpt.plot.vel.ribbon
+  rpt.plot.velSize_ <- rpt.plot.velSize + rpt.plot.velSize.ribbon
+  rpt.plot.wall_dist_ <- rpt.plot.wall_dist + rpt.plot.wall_dist.ribbon
+  rpt.plot.wall_distC_ <- rpt.plot.wall_distC + rpt.plot.wall_distC.ribbon
+  rpt.plot.angleC_ <- rpt.plot.angleC + rpt.plot.angleC.ribbon
+  
+} else {
+  rpt.plot.dist_ <- rpt.plot.dist
+  rpt.plot.velC_ <- rpt.plot.velC 
+  rpt.plot.dist2_ <- rpt.plot.dist2 
+  rpt.plot.velC2_ <- rpt.plot.velC2
+  rpt.plot.vel_ <- rpt.plot.vel 
+  rpt.plot.velSize_ <- rpt.plot.velSize
+  rpt.plot.wall_dist_ <- rpt.plot.wall_dist
+  rpt.plot.wall_distC_ <- rpt.plot.wall_distC
+  rpt.plot.angleC_ <- rpt.plot.angleC
+}
+
+```
+
+
+## Plot Figure1 (and supplements)
+
+```{r slidingPlots}
+
+## Main Plots
+sliding.vel[[1]]
+ggsave('./figs/F1c.vel.sliding.jpg',sliding.vel[[1]],width = 3,height=2.7,units="in")
+
+sliding.wall_dist[[1]]
+ggsave('./figs/F1d.wall_dist.sliding.jpg',sliding.wall_dist[[1]],width = 3,height=2.7,units="in")
+
+sliding.velC[[1]] 
+ggsave('./figs/F1e.velC.sliding.jpg',sliding.velC[[1]],width = 3,height=2.7,units="in")
+
+sliding.dist[[1]] 
+ggsave('./figs/F1f.dist_mean.sliding.jpg',sliding.dist[[1]],width = 3,height=2.7,units="in")
+
+### Supplementals
+sliding.wall_distC[[1]]
+ggsave('./figs/S1a.wall_distC.sliding.jpg',sliding.wall_distC[[1]],width = 3,height=2.7,units="in")
+
+sliding.angleC[[1]] 
+ggsave('./figs/S1d.angleC.sliding.jpg',sliding.angleC[[1]],width = 3,height=2.7,units="in")
+
+sliding.velSize[[1]]
+ggsave('./figs/S10a.velSize.sliding.jpg',sliding.velSize[[1]],width = 3,height=2.7,units="in")
+
+
+```
+
+## Plot Figure2 (and supplements)
+
+This plots the repeatability plots. The permuation plots on the top row of figure 2 are plotted using a separate python script (shuffleAllTracks.py). It takes ages to run. 
+
+```{r rptPlots}
+
+## These are plots without variance broken down. 
+#rpt.plot.velC_
+#ggsave('./figs/plots.velC.RPT.jpg',rpt.plot.velC_,width = 3,height=3,units="in")
+
+#rpt.plot.dist_
+#ggsave('./figs/plots.dist_mean.RPT.jpg',rpt.plot.dist_,width = 3,height=3,units="in")
+
+rpt.plot.vel_
+ggsave('./figs/F2e.vel.RPT.jpg',rpt.plot.vel_,width = 3,height=3,units="in")
+
+rpt.plot.wall_dist_
+ggsave('./figs/F2f.wall_dist.RPT.jpg',rpt.plot.wall_dist_,width = 3,height=3,units="in")
+
+rpt.plot.velC2_
+ggsave('./figs/F2g.velC.RPT.jpg',rpt.plot.velC2_,width = 3,height=3,units="in")
+
+rpt.plot.dist2_
+ggsave('./figs/F2h.dist_mean.RPT.jpg',rpt.plot.dist2_,width = 3,height=3,units="in")
+
+rpt.plot.wall_distC_
+ggsave('./figs/S1c.wall_distC.RPT.jpg',rpt.plot.wall_distC_,width = 3,height=3,units="in")
+
+rpt.plot.angleC_
+ggsave('./figs/S1f.angleC.RPT.jpg',rpt.plot.angleC_,width = 3,height=3,units="in")
+
+rpt.plot.velSize_
+ggsave('./figs/S10b.velSize.RPT.jpg',rpt.plot.velSize_,width = 3,height=3,units="in")
+
+```
+
+### Build Fig3 predictions
+
+This runs the functions to generate the bin-wise correlations in behavior to test predictability of behavioral differences over time. These are also very slow if we run it hourly (which we want to), so we will load them. As always, check out the functions above if you want to know how these work. 
+
+```{r prediction}
+
+if (FALSE) {
+  plots.predict.dist <- func.ndays.predict('dist_mean_',indv.long54,5)
+  plots.predict.velC <- func.ndays.predict('velC_mean_',indv.long54,5)
+  plots.predict.vel <- func.ndays.predict('vel_mean_',indv.long54,5)
+  
+  plots.predict.wall_dist <- func.ndays.predict('pDist_meanScale',indv.long54,5)
+  plots.predict.wall_distC <- func.ndays.predict('pDistC_meanScale',indv.long54,5)
+  plots.predict.angleC <- func.ndays.predict('angleC_meanScale',indv.long54,5)
+} else if (T) {
+  plots.predict.dist <- readRDS('./rdsFiles/model.predict.dist.rds')
+  plots.predict.velC <- readRDS('./rdsFiles/model.predict.velC.rds')
+  plots.predict.vel <- readRDS('./rdsFiles/model.predict.vel.rds')
+  plots.predict.velSize <- readRDS('./rdsFiles/model.predict.velSize.rds')
+  plots.predict.wall_dist <- readRDS('./rdsFiles/model.predict.wall_dist.rds')
+  plots.predict.wall_distC <- readRDS('./rdsFiles/model.predict.wall_distC.rds')
+  plots.predict.angleC <- readRDS('./rdsFiles/model.predict.angleC.rds')
+} else { 
+  plots.predict.dist <- func.ndays.predict('dist_mean_',indv.hourly54,5,hourly=T)
+  saveRDS(plots.predict.dist,'./rdsFiles/model.predict.dist.rds')
+  
+  plots.predict.velC <- func.ndays.predict('velC_meanScale',indv.hourly54,5,hourly=T)
+  saveRDS(plots.predict.velC,'./rdsFiles/model.predict.velC.rds')
+  
+  plots.predict.vel <- func.ndays.predict('vel_meanScale',indv.hourly54,5,hourly=T)
+  saveRDS(plots.predict.vel,'./rdsFiles/model.predict.vel.rds')
+  
+  plots.predict.velSize <- func.ndays.predict('vel_meanSize_',indv.hourly54,5,hourly=T)
+  saveRDS(plots.predict.velSize,'./rdsFiles/model.predict.velSize.rds')
+  
+  plots.predict.wall_dist <- func.ndays.predict('pDist_meanScale',indv.hourly54,5,hourly=T)
+  saveRDS(plots.predict.wall_dist,'./rdsFiles/model.predict.wall_dist.rds')
+  
+  plots.predict.wall_distC <- func.ndays.predict('pDistC_meanScale',indv.hourly54,5,hourly=T)
+  saveRDS(plots.predict.wall_distC,'./rdsFiles/model.predict.wall_distC.rds')
+  
+  #plots.predict.angleC <- func.ndays.predict('angleC_meanScale',indv.hourly54,5,hourly=T)
+  plots.predict.angleC <- func.ndays.predict('angleC_mean',indv.long54,5,hourly=F)
+  saveRDS(plots.predict.angleC,'./rdsFiles/model.predict.angleC.rds')
+}
+
+```
+
+## Plot Figure 3 (and supplements) 
+
+Figure 3: 
+```{r plotPredict3}
+
+megafig.dist <- func.megafig(plots.predict.dist,T)
+megafig.dist
+plots.predict.dist[[1]]
+ggsave('./figs/F3.megafig.dist.jpg',megafig.dist,width = 6.5,height=6.5,units="in")
+ggsave('./figs/F3.megafig.distSig.jpg',plots.predict.dist[[1]],width = 6.5,height=6.5,units="in")
+
+```
+
+Supplemental figures: 
+
+Velocity
+```{r megafigVel}
+## Supplemental Figures
+megafig.vel <- func.megafig(plots.predict.vel,T)
+megafig.vel
+plots.predict.vel[[1]]
+ggsave('./figs/S2.megafig.vel.jpg',megafig.vel,width = 6.5,height=6.5,units="in")
+ggsave('./figs/S2.megafig.velSig.jpg',plots.predict.vel[[1]],width = 6.5,height=6.5,units="in")
+```
+
+Velocity (scaled by size as before)
+```{r megafigVelSize}
+megafig.velSize <- func.megafig(plots.predict.velSize,T)
+megafig.velSize
+plots.predict.velSize[[1]]
+ggsave('./figs/S11.megafig.velSize.jpg',megafig.velSize,width = 6.5,height=6.5,units="in")
+ggsave('./figs/S11.megafig.velSizesig.jpg',plots.predict.velSize[[1]],width = 6.5,height=6.5,units="in")
+```
+
+Correlation in Velocity
+```{r megafigVelC}
+megafig.velC <- func.megafig(plots.predict.velC)
+
+megafig.velC
+plots.predict.velC[[1]]
+ggsave('./figs/S3.megafig.velC.jpg',megafig.velC,width = 6.5,height=6.5,units="in")
+ggsave('./figs/S3.megafig.velCsig.jpg',plots.predict.velC[[1]],width = 6.5,height=6.5,units="in")
+```
+
+Distance from Center
+```{r megafigpDist}
+megafig.pDist <- func.megafig(plots.predict.wall_dist)
+megafig.pDist
+plots.predict.wall_dist[[1]]
+ggsave('./figs/S4.megafig.pDist.jpg',megafig.pDist,width = 6.5,height=6.5,units="in")
+ggsave('./figs/S4.megafig.pDistSig.jpg',plots.predict.wall_dist[[1]],width = 6.5,height=6.5,units="in")
+```
+
+Correlation in distance from center
+```{r megafigpDistC}
+megafig.pDistC <- func.megafig(plots.predict.wall_distC)
+megafig.pDistC
+plots.predict.wall_distC[[1]]
+ggsave('./figs/S5.megafig.pDistC.jpg',megafig.pDistC,width = 6.5,height=6.5,units="in")
+ggsave('./figs/S5.megafig.pDistCSig.jpg',plots.predict.wall_distC[[1]],width = 6.5,height=6.5,units="in")
+
+```
+
+There are too many nan values to perform this analysis for correlation in angle hourly, so we run it by day. 
+
+## Behavioral correlations
+
+We want to know whether the behavioral differences are correlated. We do this using a multivariate analysis. This is extremely slow, so we load it. 
+```{r behCorr}
+
+if (F) {
+  behav.hourly.cor <- MCMCglmm::MCMCglmm(cbind(dist_meanScale, vel_meanScale, velC_meanScale, pDist_meanScale,pDistC_meanScale,angleC_meanScale) ~ trait - 1, 
+                               random = ~us(trait):Pi, 
+                               rcov = ~us(trait):units,
+                               family = c(rep("gaussian", 6)), 
+                               prior = prior.cov6, 
+                               nitt = 510000, thin = 200, burnin = 10000, 
+                               verbose = T,
+                               data = indv.hourly54)
+  saveRDS(behav.hourly.cor,'./rdsFiles/behav.hourly.cor.rds')
+} else {
+  behav.hourly.cor <- readRDS('./rdsFiles/behav.hourly.cor.rds')
+}
+
+behav.matrix.hourly <- matrix(MCMCglmm::posterior.mode(MCMCglmm::posterior.cor(behav.hourly.cor$VCV[,1:36])),6,6, 
+                              dimnames = list(c("dist", "vel", "velC", "pDist","pDistC","angleC"), 
+                                              c("dist", "vel", "velC", "pDist","pDistC","angleC")))
+
+# now to extract the CI estimates
+ci.hourly <- data.frame(coda::HPDinterval(MCMCglmm::posterior.cor(behav.hourly.cor$VCV[,1:36])))
+
+# for corrplot need 3 matrices - estimates, lower CI, upper CI
+lower.hourly <- matrix(ci.hourly[,1],6,6)
+upper.hourly <- matrix(ci.hourly[,2],6,6)
+
+test.hourly <- reshape2::melt(lower.hourly) |>
+  dplyr::mutate(p.value = ifelse(value > 0, 1, 0)) |>
+  dplyr::select(Var1, Var2, p.value)
+
+test2.hourly <- reshape2::melt(upper.hourly) |>
+  dplyr::mutate(p.value = ifelse(value < 0, 1, 0)) |>
+  dplyr::select(Var1, Var2, p.value)
+
+p.mat <- diag(6)
+p.mat[cbind(test.hourly$Var1, test.hourly$Var2)] <- p.mat[cbind(test.hourly$Var2, test.hourly$Var1)] <- test.hourly$p.value
+
+p.mat2 <- diag(6)
+p.mat2[cbind(test2.hourly$Var1, test2.hourly$Var2)] <- p.mat[cbind(test2.hourly$Var2, test2.hourly$Var1)] <- test2.hourly$p.value
+
+
+p.mat <- (p.mat | p.mat2)
+p.mat <- !p.mat
+colnames(p.mat) <- c("dist", "vel", "velC", "pDist","pDistC","angleC")
+row.names(p.mat) <- c("dist", "vel", "velC", "pDist","pDistC","angleC")
+
+## Saving corrplots is apparently a whole thing. Why are you like this R?
+corrplot::corrplot(behav.matrix.hourly, type = "upper", method = "number", p.mat = p.mat, insig = "blank")
+
+corrplot::corrplot(behav.matrix.hourly, type = "upper", method = "number", insig = "blank") 
+
+
+```
+
+## Pairwise correlations
+Since we're really trying to rule out a possible correlation, let's just do it one by one. 
+
+This also would take a while if we weren't loading it. 
+
+```{r}
+variance.df <- read.csv('variance_df.csv')
+variance.clean <- tidyr::drop_na(variance.df)
+
+variance.clean$dist_meanScale <- scale(variance.clean$dist_mean)
+variance.clean$vel_meanScale <- scale(variance.clean$vel_mean)
+variance.clean$velC_meanScale <- scale(variance.clean$velC_mean)
+variance.clean$pDist_meanScale <- scale(variance.clean$pDist_mean)
+variance.clean$pDistC_meanScale <- scale(variance.clean$pDistC_mean)
+variance.clean$angleC_meanScale <- scale(variance.clean$angC_mean)
+
+### Correlation might be different early vs late
+variance.early <- variance.clean[variance.clean$ExpDay < 30,]
+variance.late <- variance.clean[variance.clean$ExpDay >= 30,]
+
+if (F) {
+  corr.mats <- matrix(nrow = 3,ncol=6)
+  p.matrix <- matrix(nrow = 3,ncol=6)
+  for (d in seq(3)) {
+    df <- list(variance.clean,variance.early,variance.late)[[d]]
+    for (i in seq(6)) {
+      beh <- list('dist_meanScale','vel_meanScale','velC_meanScale',
+                  'pDist_meanScale','pDistC_meanScale','angleC_meanScale')[[i]] 
+      print(d)
+      print(beh)
+      single.corr <- func.corr.stat(list(beh,'mean_size'),df=df)
+      corr.mats[d,i] <- single.corr[[2]]
+      p.matrix[d,i] <- single.corr[[5]]
+    }
+  }
+  saveRDS(p.matrix,'./rdsFiles/p.matrix.rds')
+  saveRDS(corr.mats,'./rdsFiles/corr.mats.rds')
+} else {
+  p.matrix <- readRDS('./rdsFiles/p.matrix.rds')
+  corr.mats <- readRDS('./rdsFiles/corr.mats.rds')
+}
+
+colnames(corr.mats) <- c('Mean distance','Mean velocity','Velocity correlation',
+                         'Center distance','Center distance correlation','Angle correlation')
+rownames(corr.mats) <- c('All data','Prior to day 30','After day 30')
+
+corrplot::corrplot(corr.mats,method = 'number')
+
+```
+
+## So many trace plots
+
+There are plots for every day, so it's a bit much, but we are all for transparency here. 
+
+First, velocity: 
+```{r}
+plot.names <- colnames(plots.vel.hourly[[7]]$VCV)
+plot.ncols <- ncol(plots.vel.hourly[[7]]$VCV)
+for (i in seq(plot.ncols)) {
+  plot(plots.vel.hourly[[7]]$VCV[,i],main= plot.names[i])
+}
+coda::autocorr(plots.vel.hourly[[7]]$VCV)
+
+```
+
+Distance from center
+```{r}
+
+for (i in seq(plot.ncols)) {
+  plot(plots.wall_dist.hourly[[7]]$VCV[,i],main= plot.names[i])
+}
+coda::autocorr(plots.wall_dist.hourly[[7]]$VCV)
+
+```
+
+Correlation in velocity
+```{r}
+
+for (i in seq(plot.ncols)) {
+  plot(plots.velC.hourly[[7]]$VCV[,i],main= plot.names[i])
+}
+
+coda::autocorr(plots.velC.hourly[[7]]$VCV)
+
+```
+
+Inter-individual distance
+```{r}
+for (i in seq(plot.ncols)) {
+  plot(plots.dist.hourly[[7]]$VCV[,i],main= plot.names[i])
+}
+
+coda::autocorr(plots.dist.hourly[[7]]$VCV)
+
+```
+
+velocity, scaled by size
+```{r}
+
+for (i in seq(plot.ncols)) {
+  plot(plots.vel.hourlySize[[7]]$VCV[,i],main= plot.names[i])
+}
+
+coda::autocorr(plots.vel.hourlySize[[7]]$VCV)
+
+```
+
+correlation in distance from center
+```{r}
+
+for (i in seq(plot.ncols)) {
+  plot(plots.wall_distC.hourly[[7]]$VCV[,i],main= plot.names[i])
+}
+
+coda::autocorr(plots.wall_distC.hourly[[7]]$VCV)
+```
+
+correlation in angle
+```{r}
+
+for (i in seq(plot.ncols)) {
+  plot(plots.angleC.hourly[[7]]$VCV[,i],main= plot.names[i])
+}
+coda::autocorr(plots.angleC.hourly[[7]]$VCV)
+```
+

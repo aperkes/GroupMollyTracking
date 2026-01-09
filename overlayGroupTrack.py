@@ -410,7 +410,7 @@ def plot_lines(stat_list,ax=None,labels=[None,None]):
 
 ## optionally overlay the tracks on a video to show how they work
 def plot_video(track_array,video_file):
-    visualize = False
+    visualize = True
     if visualize:
         i = 0
         cors = [(255,0,0),(0,255,0),(0,0,255),(255,0,255)]
@@ -488,20 +488,21 @@ if __name__ == '__main__':
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 
     output = vid_file.replace('.mp4','.overlay.mp4') 
-    visualize = False
+    visualize = True
     out = cv2.VideoWriter(output,fourcc,fps, (frame_width,frame_height),isColor=True)
 
     t = 0
     tail_length = 10
     fish_colors = [(0,0,255),(255,255,0),(0,255,255),(255,0,255)]
 
-    start_ts = [3600,18000,32400]
+    start_ts = [3600,7600,18000,32400]
     check_frames = np.zeros(len(track_array))
-    check_frames[3600:3700] = 1
-    check_frames[18000:18100] = 1
-    check_frames[32400:32500] = 1
+    check_frames[3600:3800] = 1
+    check_frames[7600:7800] = 1
+    check_frames[18000:18200] = 1
+    check_frames[32400:32600] = 1
 
-    seg_length = 100
+    seg_length = 200
     rad = 5
     font = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = 1

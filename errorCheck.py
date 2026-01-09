@@ -8,13 +8,13 @@ from matplotlib import pyplot as plt
 from matplotlib import animation
 from matplotlib.collections import LineCollection
 
-from processTracks import get_stats,get_meta,get_tracks,get_distance
+from processTracks import get_stats,get_meta,get_tracks,get_distance,deep_clean_track
 
 
 ## Builds the string for a given fish
 # Relies on global variables
 def build_fstr(i,f):
-    x,y = track_array[i,f]
+    x,y = track_array[i,f].astype(int)
     r,thet = np.round(track_polar[i,f],3)
     vel = np.round(velocity_array[i,f],3)
     heading = np.round(heading_array[i,f],3)
@@ -39,6 +39,10 @@ if __name__ == "__main__":
     csv_file = sys.argv[1]
 
     track_array,track_polar,(n_frames,n_fish,fishIDs) = get_tracks(csv_file)
+    clean_array,velocity_array,distance_array = deep_clean_track(track_array,min_dist=50,drop_close=True)
+    track_polar[np.isnan(clean_array)] = np.nan
+    track_array = clean_array
+
 ## Calculate lots of stat arrays for plotting
     meanR_array = np.nanmean(track_polar[:,:,0],axis=1)
     meanThet_array = np.nanmean(track_polar[:,:,1],axis=1)
@@ -101,6 +105,7 @@ if __name__ == "__main__":
 
     min_dist = str(np.round(np.nanmin(meanDist_array),3))
     max_dist = str(np.round(np.nanmax(meanDist_array),3))
+    mean_dist = str(np.round(np.nanmean(meanDist_array),3))
 
     min_Ndist = str(np.round(np.nanmin(meanNn_array),3))
     max_Ndist = str(np.round(np.nanmax(meanNn_array),3))
@@ -120,7 +125,7 @@ if __name__ == "__main__":
     if TEXT:
         ax.text(805,5,vid_text)
         ax.text(0,550,"MeanNnDistance: " + ",".join([min_Ndist,max_Ndist]))
-        ax.text(0,450,"MeanDistance: " + ",".join([min_dist,max_dist]))
+        ax.text(0,450,"MeanDistance: " + ",".join([min_dist,mean_dist,max_dist]))
         ax.text(0,50,"MeanVelocity: " + ",".join([min_vel,max_vel]))
         ax.text(0,150,"StdVelocity: " + ",".join([min_vstd,max_vstd]))
         ax.text(0,250,"StdTheta: " + ",".join([min_Tstd,max_Tstd]))
@@ -128,7 +133,7 @@ if __name__ == "__main__":
 
         f_texts = []
         for f in range(n_fish):
-            x,y = track_array[first_frame,f] + 5
+            x,y = track_array[first_frame,f].astype(int) + 5
             f_texts.append(ax.text(x,y,build_fstr(first_frame,f)))
 
     key = "Fish ID \n" \
@@ -153,8 +158,8 @@ if __name__ == "__main__":
 ## This could probably be defined separately, but easier here
 ## This animates the plot, given a bunch of global variables
     def animate(i):
-        xs = track_array[i+first_frame,:,0]
-        ys = track_array[i+first_frame,:,1]
+        xs = track_array[i+first_frame,:,0].astype(int)
+        ys = track_array[i+first_frame,:,1].astype(int)
 
         if vid_file is not None:
             cap.set(cv2.CAP_PROP_POS_FRAMES, i + first_frame -1)

@@ -9,7 +9,7 @@ from matplotlib import animation
 from matplotlib.collections import LineCollection
 from matplotlib.widgets import Slider
 
-from processTracks import get_stats,get_meta,get_tracks,get_distance,clean_track
+from processTracks import get_stats,get_meta,get_tracks,get_distance,clean_track, deep_clean_track
 
 
 ## Builds the string for a given fish
@@ -48,8 +48,9 @@ if __name__ == "__main__":
 
     track_array,track_polar,(n_frames,n_fish,fishIDs) = get_tracks(csv_path)
     #import pdb;pdb.set_trace()
-    clean_array = clean_track(track_array)
-    #track_array = clean_array
+    #clean_array = clean_track(track_array)
+    clean_array,velocity_array,distance_array = deep_clean_track(track_array)
+    track_array = clean_array
 ## Calculate lots of stat arrays for plotting
 
     print(track_array.shape)
@@ -92,7 +93,8 @@ if __name__ == "__main__":
 
     slider.on_changed(update)
     plt.axis('off')
-    plt.show()
+    fig.set_size_inches(6,6)
+    #plt.show()
 
     flat_tracks = np.reshape(track_array,[-1,2])
     
@@ -115,10 +117,18 @@ if __name__ == "__main__":
     else:
         alpha = None
     bar = np.flipud(foo[0])
+    print('bar sum:',np.nansum(bar))
+    low_pass = np.nansum(bar) / 10000
+    low_pass = 0
+    print(low_pass)
+    #bar[bar <= low_pass] = np.nan
     #bar = np.fliplr(bar)
     #ax.imshow(np.flipud(foo[0]),vmin=0,vmax=250,alpha=alpha,cmap='viridis',extent=[0,800,0,800])
     #ax.imshow(bar,vmin=0,vmax=250,alpha=alpha,cmap='viridis',extent=[0,799,0,799])
-    ax.imshow(bar,vmin=0,vmax=250,alpha=alpha,cmap='viridis')
+    cmap = 'viridis'
+    #cmap = 'Oranges'
+    ax.imshow(bar,vmin=None,vmax=150,alpha=alpha,cmap=cmap)
     plt.show()
 
-    fig.savefig('./figs/' + os.path.basename(csv_file).replace('.csv','png'),dpi=300)
+    fig.savefig('./figs/' + os.path.basename(csv_file).replace('.csv','.png'),dpi=300)
+    fig.savefig('./figs/' + os.path.basename(csv_file).replace('.csv','.svg'))

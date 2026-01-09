@@ -4,6 +4,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 import itertools
 from scipy.stats import pearsonr
+from scipy.signal import convolve2d
 import warnings
 from tqdm import tqdm
 from datetime import datetime
@@ -68,7 +69,7 @@ def get_tracks(in_file):
     #track_array[track_array == -1] = np.nan
     return track_array,track_polar,[n_frames,n_fish,fishIDs]
 
-def clean_track(track_array,bins=80,thresh=1000):
+def clean_track(track_array,bins=80,thresh=None):
     clean_array = np.array(track_array)
     a_x = clean_array[:,:,0]
     a_y = clean_array[:,:,1]
@@ -80,13 +81,40 @@ def clean_track(track_array,bins=80,thresh=1000):
     xedges_.extend(xedges)
     yedges_ = [0]
     yedges_.extend(yedges)
+    #import pdb;pdb.set_trace()
+
+    int_mean,int_std = np.nanmean(hist[hist>0]),np.nanstd(hist[hist>0])
+    if thresh is None:
+        thresh = int_mean + int_std * 5
+    elif thresh == -1:
+        thresh = np.inf
+    #print(thresh,np.sum(hist > thresh))
+
+## check for lone peaks:
+    kernel = np.ones([3,3]) * -2
+    kernel[1,1] = 1
+
+    spikes = np.argwhere(convolve2d(hist,kernel,mode='same') > 0)
     clips = np.argwhere(hist > thresh)
+    clips = np.vstack([clips,spikes])
+
     for c in clips:
         x0,x1 = xedges[c[0]],xedges[c[0]+1]
         y0,y1 = yedges[c[1]],yedges[c[1]+1]
         bad_spots = np.argwhere((a_y >= y0) & (a_y <= y1) & (a_x >= x0) & (a_x <= x1))
         clean_array[bad_spots[:,0],bad_spots[:,1]] = np.nan
-    #import pdb;pdb.set_trace()
+
+    flat_array2 = np.reshape(clean_array,[-1,2])
+    flat_array2 = flat_array2[~np.isnan(flat_array2[:,0])]
+
+    if False:
+        hist2,xedges,yedges = np.histogram2d(flat_array2[:,0],flat_array2[:,1],bins=bins)
+        fig,(ax1,ax2) = plt.subplots(2)
+        ax1.imshow(hist)
+        ax2.imshow(hist2)
+        plt.show()
+        import pdb;pdb.set_trace()
+
     return clean_array
 
 def get_distance_array(track_array):
@@ -183,10 +211,208 @@ def get_histogram(track_polar,plot_me = False):
     return hists
 
 ## FUNCTION to calculate lots of motion statistics
+def get_2stats(track_array,track_polar):
+    n_frames,n_fish,_ = track_array.shape
+    n_stats = 5
+    stat_array = np.full([n_stats,n_fish,n_fish],np.nan)
+
+    velocity_array = np.full([n_frames,n_fish],np.nan)
+    angMom_array = np.empty_like(velocity_array)
+    distance_array = np.full([n_frames,n_fish,n_fish],np.nan)
+
+    MAX_VEL = 200
+    MIN_VEL = 25 ## 25 pixels corresponds to roughly 1cm
+    MAX_THETA =  np.pi/4
+
+## I might be able to speed these up:
+    for n in range(n_fish):
+        velocity_array[1:,n] = get_distance(track_array[:,n])
+        #angMom_array[1:,n] = np.diff(track_polar[:,n,1])
+## Clean up tracking errors
+    velocity_array[velocity_array > MAX_VEL] = np.nan
+    velocity_array[velocity_array == 0] = np.nan
+
+    #angMom_array[np.abs(angMom_array) > MAX_THETA] = np.nan
+    #angMom_array[angMom_array == 0] = np.nan
+
+    #diff_array = np.diff(track_array,axis=0,prepend=np.nan)
+    #diff_array[np.isnan(velocity_array)] = np.nan
+    #diff_array[velocity_array < MIN_VEL] = np.nan
+
+    #angle_array = np.arctan2(diff_array[:,:,0],diff_array[:,:,1])/np.pi*180
+
+    #angle_array[angle_array == 0] = np.nan ##solves arctan(0,0)
+    #angMom_array_N = np.array(angMom_array) / (2*np.pi)
+    #angle_array_N = angle_array / 180
+    #angle_medians = np.nanmedian(angle_array_N,axis=1)
+    #angMom_medians = np.nanmedian(angMom_array_N,axis=1)
+    #for n in range(n_fish):
+        #angMom_array_N[:,n] = 1 - np.abs(angMom_array[:,n] - angMom_medians)
+        #angle_array_N[:,n] = 1 - np.abs(angle_array_N[:,n] - angle_medians)
+
+        #angle_array_N[:,n][np.isnan(velocity_array[:,n])] = np.nan
+        #angMom_array_N[:,n][np.isnan(angMom_array[:,n])] = np.nan
+    
+    #polarity_array = np.nanmean(angle_array_N,axis=1)
+    #polarity_array[polarity_array == 1] = np.nan
+
+    #rotation_array = np.nanmean(angMom_array_N,axis=1)
+    #rotation_array[rotation_array == 1] = np.nan
+
+    all_good_indices = np.zeros(n_frames)
+    for i,j in itertools.combinations(np.arange(n_fish),2):
+## Calculate correlation of distance to wall
+        if False:
+            xs = track_polar[:,i,0]
+            ys = track_polar[:,j,0]
+            good_indices = (~np.isnan(xs)) & (~np.isnan(ys))
+            if sum(good_indices) > 10:
+                xs = xs[good_indices]
+                ys = ys[good_indices]
+                r_stat,p = pearsonr(xs,ys)
+            else:
+                r_stat = np.nan
+            #print(i,j,r_stat,p)
+            stat_array[0,i,j] = r_stat
+
+### Calculate mean distance between fish
+        track_i = track_array[:,i]
+        track_j = track_array[:,j]
+        good_indices = (~np.isnan(track_i[:,0])) & (~np.isnan(track_j[:,0]))
+        distance_array[good_indices,i,j] = np.linalg.norm(track_i[good_indices] - track_j[good_indices],axis=1)
+        distance_array[good_indices,j,i] = distance_array[good_indices,i,j]
+        all_good_indices[good_indices] = True
+        mean_distance = np.nanmean(np.linalg.norm(track_i[good_indices] - track_j[good_indices],axis=1))
+        stat_array[1,i,j] = mean_distance
+
+### Calculate speed correlation
+        #vel_i = get_distance(track_array[:,i])
+        #vel_j = get_distance(track_array[:,j])
+
+## Will probably need to add smoothing, in addition to cutting out unreasonable values.
+        #vel_i[vel_i > 200] = np.nan
+        #vel_j[vel_j > 200] = np.nan
+        vel_i = velocity_array[:,i]
+        vel_j = velocity_array[:,j]
+
+        #ang_i = angle_array[:,i]
+        #ang_j = angle_array[:,j]
+        good_indices = (~np.isnan(vel_i)) & (~np.isnan(vel_j))
+        #good_indices_a = (~np.isnan(ang_i)) & (~np.isnan(ang_j))
+        if False:
+            if sum(good_indices) > 100:
+                r_stat,p = pearsonr(vel_i[good_indices],vel_j[good_indices])
+                #good_indices1 = good_indices[1:]
+            else:
+                r_stat,p = np.nan,np.nan
+            if sum(good_indices_a) > 100:
+                r_stat2,p2 = pearsonr(angle_array[good_indices_a,i],angle_array[good_indices_a,j])
+            else:
+                r_stat2,p2 = np.nan,np.nan
+            stat_array[2,i,j] = r_stat
+            stat_array[4,i,j] = r_stat2
+## Get heading correlations
+            #head_i = np.diff(track_polar[:,i,1])
+            #head_j = np.diff(track_polar[:,j,1])
+            #head_i[np.abs(head_i) > np.pi/8] = np.nan
+            #head_j[np.abs(head_j) > np.pi/8] = np.nan
+            head_i = angMom_array[:,i]
+            head_j = angMom_array[:,j]
+
+            good_indices = ~np.isnan(head_i) & ~np.isnan(head_j)
+            if sum(good_indices) > 10:
+                r_stat,p = pearsonr(head_i[good_indices],head_j[good_indices])
+            else:
+                r_stat = np.nan
+            stat_array[3,i,j] = r_stat
+    if False:
+        print('dist from center:')
+        print(stat_array[0]) ## This is cohesion
+        print('Inter-fish Distance')
+        print(stat_array[1]) ## This is mean distance
+        print('velocity r')
+        print(stat_array[2]) ## Velocity cohesion 
+        print('Angular Mom. r')
+        print(stat_array[3]) ## Heading Cohesion
+        print('Angle r')
+        print(stat_array[4]) ## Angle Cohesion
+## What do I actually want here? 
+## Speed correlation (and std)
+## Mean distance (and std) STD is across fish
+
+
+    #distance_array = distance_array[all_good_indices == True] ## NOTE: this is bad, do I need it?
+    dist_mean = np.nanmean(distance_array) ## This is just mean distance
+    dist_std = np.nanmean(np.nanstd(distance_array,axis=(1,2)))
+
+    if False:
+        nn_dist = np.nanmin(distance_array,axis=1) ## Mean nearest neighbord distance
+        nn_mean = np.nanmean(nn_dist)
+        nn_std = np.nanstd(nn_dist)
+
+        pDist_mean = np.nanmean(track_polar[:,:,0])
+        pDist_std = np.nanstd(track_polar[:,:,0])
+        pDistC_mean = np.nanmean(stat_array[0])
+        pDistC_std = np.nanstd(stat_array[0])
+
+    vel_mean = np.nanmean(velocity_array)
+    vel_std = np.nanstd(np.nanstd(velocity_array,axis=1))
+
+### get prop active and some metric of upper limits of speed. 
+    if False:
+        prop_active = np.nanmean(velocity_array[~np.isnan(velocity_array)] > 5) 
+        upper_q = np.nanmean(np.nanquantile(velocity_array,0.95,axis=0))
+
+        angMomC_mean = np.nanmean(stat_array[3]) ## this is the mean cohesion
+        angMomC_std = np.nanstd(stat_array[3])
+        velC_mean = np.nanmean(stat_array[2])
+        velC_std = np.nanstd(stat_array[2])
+
+        angleC_mean = np.nanmean(stat_array[4])
+        angleC_std = np.nanstd(stat_array[4])
+
+        polarity_mean = np.nanmean(polarity_array)
+        polarity_std = np.nanstd(polarity_array)
+
+        rotation_mean = np.nanmean(rotation_array)
+        rotation_std = np.nanstd(rotation_array)
+
+    stat_arrays = [velocity_array,angMom_array,distance_array]
+    track_stats = {
+        'dist_mean':dist_mean,
+        'dist_std':dist_std,
+        'vel_mean':vel_mean,
+        'vel_std':vel_std
+    }
+    """
+        'velC_mean':velC_mean,
+        'velC_std':velC_std,
+        'angMC_mean':angMomC_mean,
+        'angMC_std':angMomC_std,
+        'polarity_mean':polarity_mean,
+        'polarity_std':polarity_std,
+        'rotation_mean':rotation_mean,
+        'rotation_std':rotation_std,
+        'pDist_mean':pDist_mean,
+        'pDist_std':pDist_std,
+        'pDistC_mean':pDistC_mean,
+        'pDistC_std':pDistC_std,
+        'NearN_mean':nn_mean,
+        'NearN_std':nn_std,
+        'angleC_mean':angleC_mean,
+        'angleC_std':angleC_std,
+        'prop_active':prop_active,
+        'upper_vel':upper_q
+    }
+    """
+    return track_stats,stat_arrays
+
+
+## FUNCTION to calculate lots of motion statistics
 def get_stats(track_array,track_polar):
     n_frames,n_fish,_ = track_array.shape
     n_stats = 5
-    stat_array = np.zeros([n_stats,n_fish,n_fish])
+    stat_array = np.full([n_stats,n_fish,n_fish],np.nan)
 
     velocity_array = np.full([n_frames,n_fish],np.nan)
     angMom_array = np.array(velocity_array)
@@ -281,6 +507,7 @@ def get_stats(track_array,track_polar):
             r_stat2,p2 = np.nan,np.nan
         stat_array[2,i,j] = r_stat
         stat_array[4,i,j] = r_stat2
+        
 ## Get heading correlations
         #head_i = np.diff(track_polar[:,i,1])
         #head_j = np.diff(track_polar[:,j,1])
@@ -338,7 +565,6 @@ def get_stats(track_array,track_polar):
 
     angleC_mean = np.nanmean(stat_array[4])
     angleC_std = np.nanstd(stat_array[4])
-
     polarity_mean = np.nanmean(polarity_array)
     polarity_std = np.nanstd(polarity_array)
 
@@ -526,8 +752,8 @@ if __name__ == '__main__':
     long_df = long_df[new_cols_]
 
     if True:
-        csv_df.to_csv('./JolleTracksAll_7.csv',index=False)
-        long_df.to_csv('./JolleTracksHourly_7.csv',index=False)
+        csv_df.to_csv('./JolleTracksAll_9.csv',index=False)
+        long_df.to_csv('./JolleTracksHourly_9.csv',index=False)
 
     if False:
         fig,(ax,ax2,ax3) = plt.subplots(1,3)

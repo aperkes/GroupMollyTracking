@@ -24,10 +24,10 @@ setwd("~/Documents/Scripts/GroupMollyTracking/")
 
 indv <- read.csv("JolleTracksAll_4.csv")
 indv <- read.csv("JolleTracksAll_5.csv")
-indv <- read.csv("JolleTracksAll_6.csv")
+indv <- read.csv("JolleTracksAll_8.csv")
 indv$ExpDay <- as.integer(indv$ExpDay)
 
-indv[indv$Pi == 'pi11',]$ExpDay <- indv[indv$Pi == 'pi11',]$ExpDay - 16
+#indv[indv$Pi == 'pi11',]$ExpDay <- indv[indv$Pi == 'pi11',]$ExpDay - 16
 #indv[indv$Pi == 'pi12',]$ExpDay <- indv[indv$Pi == 'pi12',]$ExpDay + 15
 
 indv$dist_meanScale <- scale(indv$dist_mean)
@@ -74,7 +74,7 @@ indv.com <- good_data
 
 ### Same for hourly (not sure I need this code...)
 
-hourly <- read.csv("JolleTracksHourly_6.csv")
+hourly <- read.csv("JolleTracksHourly_8.csv")
 hourly$Hour <- as.integer(hourly$Hour)
 hourly$ExpDay <- as.integer(hourly$ExpDay)
 
@@ -220,13 +220,14 @@ if (FALSE) {
                               verbose = T)
 }
 
-summary(res.velXtime)$solutions
+summary(res.velXtime)$solutions * (23/800)
+
 summary(res.velCXtime)$solutions
-summary(res.cohXtime)$solutions
-summary(res.pDistXtime)$solutions
+summary(res.cohXtime)$solutions * (23/800)
+summary(res.pDistXtime)$solutions * (23/800)
 summary(res.pDistCXtime)$solutions
 summary(res.activityXtime)$solutions
-summary(res.uppervelXtime)$solutions
+summary(res.uppervelXtime)$solutions * (23/800)
 #uppervel.resid <- as.double(VarCorr(res.uppervelXtime)["Residual","Variance"])
 ### Add max velocity and activity time
 
@@ -387,6 +388,9 @@ plots.angleC.hourly <- func.ndays.intercepts.het('angleC_meanScale',indv.hourly5
 plots.dist <- func.ndays.intercepts.het('dist_meanScale',indv.long54,n_days,prior.cov=prior.best)
 #plots.velC <- func.ndays.intercepts.het('velC_meanScale',indv.long54,n_days,prior.cov=prior.best)
 
+ranking.df <- plots.dist[[6]][c("picomp","ranking")] %>% 
+  arrange(picomp) %>% 
+  unique()
 ## These Four are supplemental
 #plots.vel <- func.ndays.intercepts.het('vel_meanScale',indv.long54,n_days,prior.cov=prior.best)
 #plots.wall_dist <- func.ndays.intercepts.het('pDist_meanScale',indv.long54,n_days,prior.cov=prior.best)
@@ -399,15 +403,25 @@ plots.dist <- func.ndays.intercepts.het('dist_meanScale',indv.long54,n_days,prio
 ### Sliding mean plots ####
 ### Blups are fancy, but sliding average is much easier to explain:
 ### Also a lot faster
-func.slidingMean <- function(depVar,df,n_days) {
+func.slidingMean <- function(depVar,df,n_days,use_scale = F,pix_scale = 23/800) {
+  if (!use_scale) {
+    pix_scale <- 1
+  }
+  ranking <- ranking.df$ranking
+  ranking.df$Pi <- ranking.df$picomp
+  
   indv.slidingMean <- arrange(df,Pi,ExpDay) %>%
     dplyr::mutate(rollingVar=rollapply(!! rlang::ensym(depVar),n_days,mean,align='left',fill=NA))
+  
+  indv.slidingMean <- merge(indv.slidingMean,ranking.df,by = "Pi")
+
   last_day <- max(indv.slidingMean$ExpDay) - 5
   indv.slidingMean.clipped <- indv.slidingMean[indv.slidingMean$ExpDay <= last_day,]
-  plot.sliding <- ggplot(indv.slidingMean.clipped,aes(x=ExpDay,y=rollingVar,group=Pi,color=Pi)) + 
+  plot.sliding <- ggplot(indv.slidingMean.clipped,aes(x=ExpDay,y=rollingVar * pix_scale,group=Pi,color=ranking)) + 
     geom_line() + 
     ylab(paste('Rolling',depVar)) +
     theme_classic() + 
+    scale_color_viridis_c(option = "plasma") +
     theme(legend.position = "none",
           rect=element_rect(fill="transparent"),
           panel.background=element_rect(fill="transparent"),
@@ -416,10 +430,11 @@ func.slidingMean <- function(depVar,df,n_days) {
           axis.text = element_text(size = 12, colour = "black"),
           axis.title = element_text(size = 14, face = "bold", colour = "black"),
           plot.title = element_text(hjust = 0.5, size = 0)) 
-  plot.raw <- ggplot(indv.slidingMean,aes(x=ExpDay,y=!! rlang::ensym(depVar),group=Pi,color=Pi)) + 
+  plot.raw <- ggplot(indv.slidingMean,aes(x=ExpDay,y=!! rlang::ensym(depVar),group=Pi,color=ranking)) + 
     geom_line() + 
     ylab(paste('Rolling',depVar)) +
     theme_classic() + 
+    scale_color_viridis_c(option = "plasma") +
     theme(legend.position = "none",
           rect=element_rect(fill="transparent"),
           panel.background=element_rect(fill="transparent"),
@@ -431,14 +446,16 @@ func.slidingMean <- function(depVar,df,n_days) {
   return(list(plot.sliding,indv.slidingMean,plot.raw))
 }
 
-sliding.dist <- func.slidingMean('dist_mean',indv.long54,5)
+sliding.dist <- func.slidingMean('dist_mean',indv.long54,5,use_scale=T)
 sliding.velC <- func.slidingMean('velC_mean',indv.long54,5)
 sliding.velCScale <- func.slidingMean('velC_meanScale',indv.long54,5)
 
-sliding.vel <- func.slidingMean('vel_mean',indv.long54,5)
-sliding.wall_dist <- func.slidingMean('pDist_mean',indv.long54,5)
+sliding.vel <- func.slidingMean('vel_mean',indv.long54,5,use_scale=T)
+sliding.wall_dist <- func.slidingMean('pDist_mean',indv.long54,5,use_scale=T)
 sliding.wall_distC <- func.slidingMean('pDistC_mean',indv.long54,5)
 sliding.angleC <- func.slidingMean('angleC_mean',indv.long54,5)
+
+sliding.dist[[1]]
 
 ### Make plot of repeatability over time ####
 
@@ -601,7 +618,7 @@ func.shuffled.rpt.i <- function(i,depVar="dist_mean",day_bin=1,prior.cov=prior.b
   rpt <- unlist(rpt)
   return(rpt) }
 
-func.shuffled.rpt.i(1,hourly=T)
+#func.shuffled.rpt.i(1,hourly=T)
 
 ## Run for real: 
 ### Set interations:  vvv below. Be sure to set cores  vv. 
@@ -678,6 +695,8 @@ ggsave('~/Documents/Scripts/GroupMollyTracking/figs/plots.velC.sliding.jpg',slid
 sliding.dist[[1]]; rpt.plot.dist2_
 sliding.velC[[1]]; rpt.plot.velC2_
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.dist_mean.RPT.jpg',rpt.plot.dist2_,width = 3,height=3,units="in")
+ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.dist_mean.RPT.svg',rpt.plot.dist2_,width = 3,height=3,units="in")
+
 ggsave('~/Documents/Scripts/GroupMollyTracking/figs/SupPlots.velC.RPT.jpg',rpt.plot.velC2_,width = 3,height=3,units="in")
 
 sliding.vel[[1]];rpt.plot.vel_
@@ -1017,7 +1036,7 @@ if (FALSE) {
   plots.predict.wall_distC <- func.ndays.predict('pDistC_meanScale',indv.long54,5)
   plots.predict.angleC <- func.ndays.predict('angleC_meanScale',indv.long54,5)
 } else { 
-  plots.predict.dist <- func.ndays.predict('dist_mean_',indv.hourly54,5,hourly=T)
+  #plots.predict.dist <- func.ndays.predict('dist_mean_',indv.hourly54,5,hourly=T)
   plots.predict.velC <- func.ndays.predict('velC_mean_',indv.hourly54,5,hourly=T)
   plots.predict.vel <- func.ndays.predict('vel_mean_',indv.hourly54,5,hourly=T)
   
@@ -1211,10 +1230,11 @@ if (FALSE) {
   test <- melt(lower.all) %>%
     mutate(p.value = ifelse(value < 0, 1, 0)) %>%
     select(Var1, Var2, p.value)
-  
+
   p.mat <- diag(6)
   p.mat[cbind(test$Var1, test$Var2)] <- p.mat[cbind(test$Var2, test$Var1)] <- test$p.value
   
+
   colnames(p.mat) <- c("dist", "vel", "velC", "pDist","pDistC","angleC")
   row.names(p.mat) <- c("dist", "vel", "velC", "pDist","pDistC","angleC")
   
@@ -1243,12 +1263,20 @@ if (FALSE) {
   upper.hourly <- matrix(ci.hourly[,2],6,6)
   
   test.hourly <- melt(lower.hourly) %>%
-    mutate(p.value = ifelse(value < 0, 1, 0)) %>%
+    mutate(p.value = ifelse(value > 0, 1, 0)) %>%
     select(Var1, Var2, p.value)
   
+  test2.hourly <- melt(upper.hourly) %>%
+    mutate(p.value = ifelse(value < 0, 1, 0)) %>%
+    select(Var1, Var2, p.value)
+  p.mat2 <- diag(6)
+  p.mat2[cbind(test2.hourly$Var1, test2.hourly$Var2)] <- p.mat[cbind(test2.hourly$Var2, test2.hourly$Var1)] <- test2.hourly$p.value
+   
   p.mat <- diag(6)
   p.mat[cbind(test.hourly$Var1, test.hourly$Var2)] <- p.mat[cbind(test.hourly$Var2, test.hourly$Var1)] <- test.hourly$p.value
   
+  p.mat <- (p.mat | p.mat2)
+  p.mat <- !p.mat
   colnames(p.mat) <- c("dist", "vel", "velC", "pDist","pDistC","angleC")
   row.names(p.mat) <- c("dist", "vel", "velC", "pDist","pDistC","angleC")
   
@@ -1256,6 +1284,7 @@ if (FALSE) {
   
   corrplot(behav.matrix.hourly, type = "upper", method = "number", insig = "blank") 
 }
+
 ## Confirm that std decreases over time
 df.var <- read.csv('var_df.csv')
 df.var <- drop_na(df.var)
@@ -1268,7 +1297,213 @@ summary(res.pDistVar)
 res.cohVar <- lme(coh.std ~ day,random=~1|pi,data=df.var)
 summary(res.cohVar)
 
+### Check whether normalized variance increased
+
+variance.df <- read.csv('variance_df.csv')
+variance.clean <- drop_na(variance.df)
+colnames(variance.clean)
+bar <- lme(norm_std ~ day,random=~1|pi,data=variance.clean)
+bar <- lme(std ~ day,random=~1|pi,data=variance.clean)
+summary(bar)
+
+bar <- lme(indv_err ~ day,random=~1|pi,data=variance.clean)
+summary(bar)
+
+bar <- lme(indv_cv ~ day,random=~1|pi,data=variance.clean)
+summary(bar)
+
+bar <- lme(dist_mean ~ day,random=~1|pi,data=variance.clean)
+summary(bar)
+
+## Check on change in CV: 
+CV.df <- read.csv('CV_df.csv')
+CV.df <- drop_na(CV.df)
+CV.early <- CV.df[CV.df$ExpDay < 25,]
+CV.late <- CV.df[CV.df$ExpDay >= 25,]
+head(CV.df)
+bar <- lme(dist_CV ~ ExpDay,random=~1|pi,data=CV.df)
+summary(bar)
+bar <- lme(vel_CV ~ ExpDay,random=~1|pi,data=CV.df)
+summary(bar)
+bar <- lme(pDist_CV ~ ExpDay,random=~1|pi,data=CV.df)
+summary(bar)
+
+### Use multivariate approach to check size/beh correlation
+
+variance.clean$dist_meanScale <- scale(variance.clean$dist_mean)
+variance.clean$vel_meanScale <- scale(variance.clean$vel_mean)
+variance.clean$velC_meanScale <- scale(variance.clean$velC_mean)
+variance.clean$pDist_meanScale <- scale(variance.clean$pDist_mean)
+variance.clean$pDistC_meanScale <- scale(variance.clean$pDistC_mean)
+variance.clean$angleC_meanScale <- scale(variance.clean$angC_mean)
+
+variance.early <- variance.clean[variance.clean$day < 30,]
+variance.late <- variance.clean[variance.clean$day >= 30,]
+
+prior.cov10 <- list(R = list(V = diag(10), nu = 10.002),
+                  G = list(G1=list(V = diag(10), nu = 10.002, alpha.mu = rep(0,10), alpha.V = 1000*diag(10))))
+
+prior.cov2 <- list(R = list(V = diag(2), nu = 2.002),
+                    G = list(G1=list(V = diag(2), nu = 2.002, alpha.mu = rep(0,2), alpha.V = 1000*diag(2))))
+
+prior.cov3 <- list(R = list(V = diag(3), nu = 3.002),
+                   G = list(G1=list(V = diag(3), nu = 3.002, alpha.mu = rep(0,3), alpha.V = 1000*diag(3))))
+
+beh.list <- list('dist_meanScale','vel_meanScale','velC_meanScale','pDist_mean','pDistC_mean','angleC_meanScale','mean_size')
+
+## There's some weirdness here about the size corrleations. 
+beh.list <- list('mean_size','min_size')
+beh.str <- paste(beh.list,collapse = ',')
+df <- variance.clean
+
+func.multi.corr <- function(beh.list,df=indv.hourly54) {
+  beh.str <- paste(beh.list,collapse = ',')
+  n_beh <- length(beh.list)
+  #print(n_beh)
+  prior.covX <- list(R = list(V = diag(n_beh), nu = n_beh + 0.002),
+                     G = list(G1=list(V = diag(n_beh), nu = n_beh + 0.002, alpha.mu = rep(0,n_beh), alpha.V = 1000*diag(n_beh))))
+  
+  behav.size.corX <- MCMCglmm(as.formula(paste("cbind(",beh.str,") ~ trait - 1",sep="")), 
+                              random = ~us(trait):Pi, 
+                              rcov = ~us(trait):units,
+                              family = c(rep("gaussian", n_beh)), 
+                              prior = prior.covX, 
+                              nitt = 510000, thin = 200, burnin = 10000, 
+                              verbose = T,
+                              data = df)
+  # Model for entire observation period  ----
+  behav.matrix.sizeX <- matrix(posterior.mode(posterior.cor(behav.size.corX$VCV[,1:n_beh^2])),n_beh,n_beh, 
+                               dimnames = list(beh.list, 
+                                               beh.list))
+  
+  # now to extract the CI estimates
+  ci.sizeX <- data.frame(HPDinterval(posterior.cor(behav.size.corX$VCV[,1:n_beh^2])))
+  
+  # for corrplot need 3 matrices - estimates, lower CI, upper CI
+  lower.sizeX <- matrix(ci.sizeX[,1],n_beh,n_beh)
+  upper.sizeX <- matrix(ci.sizeX[,2],n_beh,n_beh)
+  
+  test.sizeX <- melt(lower.sizeX) %>%
+    mutate(p.value = ifelse(value > 0, 1, 0)) %>%
+    select(Var1, Var2, p.value)
+  
+  test2.sizeX <- melt(upper.sizeX) %>%
+    mutate(p.value = ifelse(value < 0, 1, 0)) %>%
+    select(Var1, Var2, p.value)
+  p.mat2.sizeX <- diag(n_beh)
+  
+  p.mat.sizeX <- diag(n_beh)
+  p.mat.sizeX[cbind(test.sizeX$Var1, test.sizeX$Var2)] <- p.mat.sizeX[cbind(test.sizeX$Var2, test.sizeX$Var1)] <- test.sizeX$p.value
+  p.mat2.sizeX[cbind(test2.sizeX$Var1, test2.sizeX$Var2)] <- p.mat2.sizeX[cbind(test2.sizeX$Var2, test2.sizeX$Var1)] <- test2.sizeX$p.value
+  
+  #print(p.mat.sizeX)
+  #print(p.mat2.sizeX)
+  
+  p.mat.sizeX <- p.mat.sizeX | p.mat2.sizeX
+  p.mat.sizeX <- !p.mat.sizeX ## I don't know why p.mat is a filter (True == Blanked)
+  #print(p.mat.sizeX)
+  colnames(p.mat.sizeX) <- beh.list
+  row.names(p.mat.sizeX) <- beh.list
+  
+  corrplot(behav.matrix.sizeX, type = "upper", method = "number", insig = "blank")
+  corrplot(behav.matrix.sizeX, type = "upper", method = "number", p.mat = p.mat.sizeX, insig = "blank")
+
+  return(list(behav.matrix.sizeX,p.mat.sizeX,behav.size.corX))
+}
+
+func.corr.stat <- function(beh.list,df=variance.clean) {
+  beh.str <- paste(beh.list,collapse = ',')
+  n_beh <- length(beh.list)
+  #print(n_beh)
+  prior.covX <- list(R = list(V = diag(n_beh), nu = n_beh + 0.002),
+                     G = list(G1=list(V = diag(n_beh), nu = n_beh + 0.002, alpha.mu = rep(0,n_beh), alpha.V = 1000*diag(n_beh))))
+  
+  behav.size.corX <- MCMCglmm(as.formula(paste("cbind(",beh.str,") ~ trait - 1",sep="")), 
+                              random = ~us(trait):pi, 
+                              rcov = ~us(trait):units,
+                              family = c(rep("gaussian", n_beh)), 
+                              prior = prior.covX, 
+                              nitt = 510000, thin = 200, burnin = 10000, 
+                              verbose = F,
+                              data = df)
+  ## Correlation
+  # Model for entire observation period  ----
+  behav.matrix.sizeX <- matrix(posterior.mode(posterior.cor(behav.size.corX$VCV[,1:n_beh^2])),n_beh,n_beh, 
+                               dimnames = list(beh.list, 
+                                               beh.list))
+  
+  ## Confidence interval
+  # now to extract the CI estimates
+  ci.sizeX <- data.frame(HPDinterval(posterior.cor(behav.size.corX$VCV[,1:n_beh^2])))
+  
+  sig.0 <- TRUE
+  if (ci.sizeX['var2','lower'] * ci.sizeX['var2','upper'] < 0) {
+    sig.0 <- FALSE
+  }
+  
+  ## Correlation
+  r.est <- behav.matrix.sizeX[1,2]
+  #print(behav.matrix.sizeX[1,2])
+  #print(sig.0)
+  ## Check that eff sample > 2500
+  #print(min(summary(behav.size.corX)$solutions[,'eff.samp']))
+  f.samp <- min(summary(behav.size.corX)$solutions[,'eff.samp'])
+  
+  if (f.samp < 2000) {
+    print("Warning, f.samp < 2000")
+    print(f.samp)
+  }
+  ## Check that autocorr is low 
+  #print(max(abs(autocorr(behav.size.corX$VCV)[2,,])))
+  max.autocorr <- max(abs(autocorr(behav.size.corX$VCV)[2,,]))
+  
+  if (max.autocorr > 0.1) { 
+    print("Warning, max.autocorr > 0.1")
+    print(max.autocorr)
+    }
+  return(list(behav.size.corX,r.est,f.samp,max.autocorr,sig.0))
+}
+
+### We don't have the power for doing it all at once, so we'll do it one by one
+multi.corr.list <- func.multi.corr(list('dist_meanScale','pDist_meanScale'),df=indv.hourly54)
+
+#multi.corr.list <- func.multi.corr(list('dist_meanScale','vel_meanScale','pDist_mean','mean_size'))
+
+corr.mats <- matrix(nrow = 3,ncol=6)
+p.matrix <- matrix(nrow = 3,ncol=6)
+for (d in seq(3)) {
+  df <- list(variance.clean,variance.early,variance.late)[[d]]
+  for (i in seq(6)) {
+    beh <- list('dist_meanScale','vel_meanScale','velC_meanScale',
+             'pDist_meanScale','pDistC_meanScale','angleC_meanScale')[[i]] 
+    print(d)
+    print(beh)
+    single.corr <- func.corr.stat(list(beh,'mean_size'),df=df)
+    corr.mats[d,i] <- single.corr[[2]]
+    p.matrix[d,i] <- single.corr[[5]]
+  }
+}
+
+multi.corr.all <- func.corr.stat(list('dist_meanScale','mean_size'),df=variance.clean)
+multi.corr.early <- func.corr.stat(list('dist_meanScale','mean_size'),df=variance.early)
+multi.corr.late <- func.corr.stat(list('dist_meanScale','mean_size'),df=variance.late)
+
+## Simple cor test for sanity checks: 
+cor(variance.clean[variance.clean$day == 14,'mean_size'],
+    variance.clean[variance.clean$day == 14,'min_size'])
+
+bar <- lme(min_size ~ mean_size,random=~1|day,data=variance.early)
+summary(bar)
+
+## So, with standard regression, we do get a pretty strong effect of size on behavior. 
+## Ruh roh. 
+
+
+
+
 ## Now to the main event: individual repeatability over time
+
+## on second though, this is all stupid
 
 ## This is done in parallel, but it's fast enough. 
 

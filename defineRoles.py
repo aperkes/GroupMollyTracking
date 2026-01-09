@@ -592,6 +592,11 @@ if __name__ == '__main__':
         ranked_array = np.full(velocity_array.shape,np.nan)
         ranked_pDistarray = np.full(velocity_array.shape,np.nan)
         ranked_distarray = np.full(velocity_array.shape,np.nan)
+
+        #simple_velStd = np.nanstd(velocity_array,axis=1)
+        #simple_pDistStd = np.nanstd(pDist_array,axis=1)
+        #simple_distStd = np.nanstd(distanceM_array,axis=1)
+
 ## This is a tricky little bit
 ## We're using these good indices, working backwards and forwards to define tracklets
 ## Then finding the means, ranking the tracklets, and assigning them to the ranked array.
@@ -670,7 +675,7 @@ if __name__ == '__main__':
             top_Is = np.array(len_list_i)[np.argsort(len_list)[::-1]][:10]
             for i_ in range(len(top_Is)):
                 i = top_Is[i_]
-                tmp_df = get_df(i,pi,day,i_,plot_me = True)
+                tmp_df = get_df(i,pi,day,i_,plot_me = False)
                 if lists_of_dfs[day][i_] is None:
                     lists_of_dfs[day][i_] = tmp_df
                 else:
@@ -697,6 +702,7 @@ if __name__ == '__main__':
     n_plots = len(median_arrays.keys())
 
     n_pis = len(median_arrays.keys())
+    import pdb;pdb.set_trace()
     all_std_v = np.full([n_pis,100],np.nan)
     all_std_p = np.full([n_pis,100],np.nan)
     all_std_c = np.full([n_pis,100],np.nan)
